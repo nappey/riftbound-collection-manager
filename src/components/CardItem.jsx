@@ -1,0 +1,166 @@
+import { useRef, useEffect } from 'react';
+import { formatPlayset, isAlwaysFoil } from '../utils/playset';
+
+function PriceTag({ price, variant = 'normal', pricesLoading }) {
+  if (pricesLoading) return <span className="card-price loading">…</span>;
+  const p = price?.[variant];
+  if (!p?.market) return null;
+  return (
+    <span className={`card-price${variant === 'foil' ? ' foil' : ''}`}>
+      ${p.market.toFixed(2)}
+    </span>
+  );
+}
+
+function PlaysetCheckbox({ count, onSet }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = count > 0 && count < 3;
+  }, [count]);
+  return (
+    <label className="playset-check-label" title="Quick-set playset (×3)">
+      <input
+        ref={ref}
+        type="checkbox"
+        className="playset-check"
+        checked={count >= 3}
+        onChange={(e) => onSet(e.target.checked ? 3 : 0)}
+      />
+      <span>×3</span>
+    </label>
+  );
+}
+
+// A single +/- row with the playset checkbox
+function Counter({ cardId, count, onAdjust, label }) {
+  return (
+    <div className="card-controls">
+      <PlaysetCheckbox count={count} onSet={(n) => onAdjust(cardId, n - count)} />
+      <button onClick={() => onAdjust(cardId, -1)} disabled={count === 0} aria-label={`Remove ${label}`}>−</button>
+      <span className="card-count">{count}</span>
+      <button onClick={() => onAdjust(cardId, 1)} aria-label={`Add ${label}`}>+</button>
+    </div>
+  );
+}
+
+// Renders one card's counters — alwaysFoil cards get a single foil counter,
+// normal cards get a normal counter + a separate foil row.
+function CardCounters({ card, count, foilCount, price, pricesLoading, onAdjust, onAdjustFoil, alwaysFoil }) {
+  const label     = formatPlayset(alwaysFoil ? foilCount : count);
+  const foilLabel = formatPlayset(foilCount);
+  const foilPrice = price?.foil?.market != null;
+
+  if (alwaysFoil) {
+    return (
+      <>
+        <Counter
+          cardId={card.id}
+          count={foilCount}
+          onAdjust={onAdjustFoil}
+          label="foil"
+        />
+        <div className="card-playset">{label ?? ' '}</div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <Counter cardId={card.id} count={count} onAdjust={onAdjust} label="one" />
+      <div className="card-playset">{label ?? ' '}</div>
+      <div className="card-foil">
+        <div className="card-foil-label">
+          Foil
+          <PriceTag price={price} variant="foil" pricesLoading={foilPrice ? pricesLoading : false} />
+        </div>
+        <div className="card-controls">
+          <button onClick={() => onAdjustFoil(card.id, -1)} disabled={foilCount === 0} aria-label="Remove foil">−</button>
+          <span className="card-count">{foilCount}</span>
+          <button onClick={() => onAdjustFoil(card.id, 1)} aria-label="Add foil">+</button>
+        </div>
+        <div className="card-playset">{foilLabel ?? ' '}</div>
+      </div>
+    </>
+  );
+}
+
+export default function CardItem({ card, count, foilCount, price, alts = [], pricesLoading, onAdjust, onAdjustFoil, onOpenModal }) {
+  const alwaysFoil = isAlwaysFoil(card);
+  const effectiveCount = alwaysFoil ? foilCount : count;
+  const imgSrc = card.media?.image_url ?? null;
+
+  let className = 'card-item';
+  if (effectiveCount > 0 || (!alwaysFoil && foilCount > 0)) className += ' owned';
+  if (effectiveCount >= 3) className += ' playset';
+
+  return (
+    <div className={className}>
+      <div className="card-img-btn" onClick={() => onOpenModal?.(card)} title="Click to view">
+        {imgSrc
+          ? <img className="card-img" src={imgSrc} alt={card.name} loading="lazy" />
+          : <div className="card-img-placeholder">{card.name}</div>}
+      </div>
+
+      <div className="card-name">
+        {card.name}
+        {alwaysFoil && <span className="card-foil-badge">✦</span>}
+        <PriceTag
+          price={price}
+          variant={alwaysFoil ? 'foil' : 'normal'}
+          pricesLoading={pricesLoading}
+        />
+      </div>
+
+      <CardCounters
+        card={card}
+        count={count}
+        foilCount={foilCount}
+        price={price}
+        pricesLoading={pricesLoading}
+        onAdjust={onAdjust}
+        onAdjustFoil={onAdjustFoil}
+        alwaysFoil={alwaysFoil}
+      />
+
+      {/* Alt art cards are always foil */}
+      {alts.map(({ card: alt, count: altCount, foilCount: altFoilCount, price: altPrice }) => {
+        const altAlwaysFoil = isAlwaysFoil(alt); // should always be true for alts
+        const altEffective = altAlwaysFoil ? (altFoilCount ?? 0) : altCount;
+        const altLabel = formatPlayset(altEffective);
+        return (
+          <div key={alt.id} className="card-alt">
+            <div className="card-alt-label">
+              Alt Art ✦
+              <PriceTag price={altPrice} variant={altAlwaysFoil ? 'foil' : 'normal'} pricesLoading={pricesLoading} />
+            </div>
+            {altAlwaysFoil ? (
+              <>
+                <Counter
+                  cardId={alt.id}
+                  count={altFoilCount ?? 0}
+                  onAdjust={onAdjustFoil}
+                  label="alt foil"
+                />
+                <div className="card-playset">{altLabel ?? ' '}</div>
+              </>
+            ) : (
+              <>
+                <Counter cardId={alt.id} count={altCount} onAdjust={onAdjust} label="alt" />
+                <div className="card-playset">{altLabel ?? ' '}</div>
+                <div className="card-foil">
+                  <div className="card-foil-label">Foil</div>
+                  <div className="card-controls">
+                    <button onClick={() => onAdjustFoil(alt.id, -1)} disabled={(altFoilCount ?? 0) === 0}>−</button>
+                    <span className="card-count">{altFoilCount ?? 0}</span>
+                    <button onClick={() => onAdjustFoil(alt.id, 1)}>+</button>
+                  </div>
+                  <div className="card-playset">{formatPlayset(altFoilCount ?? 0) ?? ' '}</div>
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}

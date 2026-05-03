@@ -1,0 +1,1 @@
+I want to create a collection manager for riftbound cards. I want all the cards to be pulled in and have a very simple ui. Where I can group by playsets(3) per set. and when I have just a playset it recognizes that but if I have more it shows that I have a playset plus how ever many extra.
