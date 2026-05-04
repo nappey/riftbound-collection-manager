@@ -32,10 +32,12 @@ function PlaysetCheckbox({ count, onSet }) {
 }
 
 // A single +/- row with the playset checkbox
-function Counter({ cardId, count, onAdjust, label }) {
+// foilCount is optional — when provided, the checkbox reflects the combined total
+function Counter({ cardId, count, foilCount = 0, onAdjust, label }) {
+  const total = count + foilCount;
   return (
     <div className="card-controls">
-      <PlaysetCheckbox count={count} onSet={(n) => onAdjust(cardId, n - count)} />
+      <PlaysetCheckbox count={total} onSet={(n) => onAdjust(cardId, Math.max(0, n - foilCount) - count)} />
       <button onClick={() => onAdjust(cardId, -1)} disabled={count === 0} aria-label={`Remove ${label}`}>−</button>
       <span className="card-count">{count}</span>
       <button onClick={() => onAdjust(cardId, 1)} aria-label={`Add ${label}`}>+</button>
@@ -46,7 +48,7 @@ function Counter({ cardId, count, onAdjust, label }) {
 // Renders one card's counters — alwaysFoil cards get a single foil counter,
 // normal cards get a normal counter + a separate foil row.
 function CardCounters({ card, count, foilCount, price, pricesLoading, onAdjust, onAdjustFoil, alwaysFoil }) {
-  const label     = formatPlayset(alwaysFoil ? foilCount : count);
+  const label     = formatPlayset(alwaysFoil ? foilCount : count + foilCount);
   const foilLabel = formatPlayset(foilCount);
   const foilPrice = price?.foil?.market != null;
 
@@ -66,7 +68,7 @@ function CardCounters({ card, count, foilCount, price, pricesLoading, onAdjust, 
 
   return (
     <>
-      <Counter cardId={card.id} count={count} onAdjust={onAdjust} label="one" />
+      <Counter cardId={card.id} count={count} foilCount={foilCount} onAdjust={onAdjust} label="one" />
       <div className="card-playset">{label ?? ' '}</div>
       <div className="card-foil">
         <div className="card-foil-label">
@@ -86,7 +88,7 @@ function CardCounters({ card, count, foilCount, price, pricesLoading, onAdjust, 
 
 export default function CardItem({ card, count, foilCount, price, alts = [], pricesLoading, onAdjust, onAdjustFoil, onOpenModal }) {
   const alwaysFoil = isAlwaysFoil(card);
-  const effectiveCount = alwaysFoil ? foilCount : count;
+  const effectiveCount = alwaysFoil ? foilCount : count + foilCount;
   const imgSrc = card.media?.image_url ?? null;
 
   let className = 'card-item';
@@ -125,7 +127,7 @@ export default function CardItem({ card, count, foilCount, price, alts = [], pri
       {/* Alt art cards are always foil */}
       {alts.map(({ card: alt, count: altCount, foilCount: altFoilCount, price: altPrice }) => {
         const altAlwaysFoil = isAlwaysFoil(alt); // should always be true for alts
-        const altEffective = altAlwaysFoil ? (altFoilCount ?? 0) : altCount;
+        const altEffective = altAlwaysFoil ? (altFoilCount ?? 0) : altCount + (altFoilCount ?? 0);
         const altLabel = formatPlayset(altEffective);
         return (
           <div key={alt.id} className="card-alt">
@@ -145,7 +147,7 @@ export default function CardItem({ card, count, foilCount, price, alts = [], pri
               </>
             ) : (
               <>
-                <Counter cardId={alt.id} count={altCount} onAdjust={onAdjust} label="alt" />
+                <Counter cardId={alt.id} count={altCount} foilCount={altFoilCount ?? 0} onAdjust={onAdjust} label="alt" />
                 <div className="card-playset">{altLabel ?? ' '}</div>
                 <div className="card-foil">
                   <div className="card-foil-label">Foil</div>
