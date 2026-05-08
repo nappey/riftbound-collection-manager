@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import SetSection from './components/SetSection';
+import RuneBox from './components/RuneBox';
 import FilterBar from './components/FilterBar';
 import ImportButton from './components/ImportButton';
 import ExportButton from './components/ExportButton';
@@ -11,8 +12,10 @@ import './App.css';
 
 const API_BASE = 'https://api.riftcodex.com';
 const PAGE_SIZE = 100;
-const STORAGE_KEY = 'riftbound-collection';
+const STORAGE_KEY      = 'riftbound-collection';
 const FOIL_STORAGE_KEY = 'riftbound-collection-foil';
+const LF_KEY           = 'riftbound-looking-for';
+const UFT_KEY          = 'riftbound-up-for-trade';
 // In Electron the main process injects CORS headers, so use the direct URL.
 // In the browser dev server, use the Vite proxy to avoid CORS.
 const IS_ELECTRON = typeof window !== 'undefined' && window.__electron__?.isElectron;
@@ -159,10 +162,19 @@ export default function App() {
     try { return JSON.parse(localStorage.getItem(FOIL_STORAGE_KEY)) || {}; }
     catch { return {}; }
   });
+  const [lookingFor, setLookingFor] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(LF_KEY)) || {}; }
+    catch { return {}; }
+  });
+  const [upForTrade, setUpForTrade] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(UFT_KEY)) || {}; }
+    catch { return {}; }
+  });
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [sort, setSort] = useState(DEFAULT_SORT);
   const [modalCard, setModalCard] = useState(null);
   const [tab, setTab] = useState('collection');
+  const [activeSetId, setActiveSetId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -184,6 +196,14 @@ export default function App() {
     localStorage.setItem(FOIL_STORAGE_KEY, JSON.stringify(foilCollection));
   }, [foilCollection]);
 
+  useEffect(() => {
+    localStorage.setItem(LF_KEY, JSON.stringify(lookingFor));
+  }, [lookingFor]);
+
+  useEffect(() => {
+    localStorage.setItem(UFT_KEY, JSON.stringify(upForTrade));
+  }, [upForTrade]);
+
   function adjust(cardId, delta) {
     setCollection((prev) => {
       const next = { ...prev };
@@ -202,6 +222,22 @@ export default function App() {
     });
   }
 
+  function toggleLF(cardId) {
+    setLookingFor(prev => {
+      const next = { ...prev };
+      if (next[cardId]) { delete next[cardId]; } else { next[cardId] = true; }
+      return next;
+    });
+  }
+
+  function toggleUFT(cardId) {
+    setUpForTrade(prev => {
+      const next = { ...prev };
+      if (next[cardId]) { delete next[cardId]; } else { next[cardId] = true; }
+      return next;
+    });
+  }
+
   // CSV import: overwrite counts for matched cards, leave others untouched.
   // Rare/Showcase/AltArt cards go to foilCollection automatically.
   function handleImport({ updates, foilUpdates }) {
@@ -209,8 +245,14 @@ export default function App() {
     setFoilCollection((prev) => ({ ...prev, ...foilUpdates }));
   }
 
+  const allRuneCards = useMemo(
+    () => allCards.filter(c => c.classification?.type === 'Rune'),
+    [allCards]
+  );
+
   const cardsBySet = useMemo(() => {
-    const filtered = applyFilters(allCards, filters, collection);
+    const filtered = applyFilters(allCards, filters, collection)
+      .filter(c => c.classification?.type !== 'Rune');
     const sorted = applySort(filtered, sort, collection);
     return groupBySet(sorted);
   }, [allCards, filters, sort, collection]);
@@ -225,6 +267,9 @@ export default function App() {
 
   const setIds = Object.keys(cardsBySet);
   const totalVisible = setIds.reduce((n, id) => n + cardsBySet[id].cards.length, 0);
+  const currentSetId = activeSetId === 'runes' ? 'runes'
+    : setIds.includes(activeSetId) ? activeSetId
+    : (setIds[0] ?? null);
 
   return (
     <div className="app">
@@ -267,32 +312,68 @@ export default function App() {
           foilCollection={foilCollection}
           prices={prices}
           pricesLoading={pricesLoading}
+          lookingFor={lookingFor}
+          upForTrade={upForTrade}
         />
       ) : (
         <>
           <FilterBar filters={filters} sort={sort} onChange={setFilters} onSortChange={setSort} />
+
+          {/* ── Set tabs ── */}
+          <div className="set-tabs">
+            <button
+              className={`set-tab${currentSetId === 'runes' ? ' set-tab--active' : ''}`}
+              onClick={() => setActiveSetId('runes')}
+            >Rune Box</button>
+            {setIds.map(sid => (
+              <button
+                key={sid}
+                className={`set-tab${currentSetId === sid ? ' set-tab--active' : ''}${cardsBySet[sid].promo ? ' set-tab--promo' : ''}`}
+                onClick={() => setActiveSetId(sid)}
+              >{cardsBySet[sid].label}</button>
+            ))}
+          </div>
+
           <div className="results-count">
             {totalVisible} card{totalVisible !== 1 ? 's' : ''}
           </div>
+
           <main>
-            {setIds.length === 0 ? (
-              <div className="status">No cards match your filters.</div>
+            {currentSetId === 'runes' ? (
+              <RuneBox
+                allRuneCards={allRuneCards}
+                collection={collection}
+                foilCollection={foilCollection}
+                prices={prices}
+                pricesLoading={pricesLoading}
+                onAdjust={adjust}
+                onAdjustFoil={adjustFoil}
+                onOpenModal={setModalCard}
+                lookingFor={lookingFor}
+                upForTrade={upForTrade}
+                onToggleLF={toggleLF}
+                onToggleUFT={toggleUFT}
+              />
+            ) : currentSetId ? (
+              <SetSection
+                key={currentSetId}
+                setName={cardsBySet[currentSetId].label}
+                promo={cardsBySet[currentSetId].promo}
+                cards={cardsBySet[currentSetId].cards}
+                collection={collection}
+                foilCollection={foilCollection}
+                prices={prices}
+                pricesLoading={pricesLoading}
+                onAdjust={adjust}
+                onAdjustFoil={adjustFoil}
+                onOpenModal={setModalCard}
+                lookingFor={lookingFor}
+                upForTrade={upForTrade}
+                onToggleLF={toggleLF}
+                onToggleUFT={toggleUFT}
+              />
             ) : (
-              setIds.map((setId) => (
-                <SetSection
-                  key={setId}
-                  setName={cardsBySet[setId].label}
-                  promo={cardsBySet[setId].promo}
-                  cards={cardsBySet[setId].cards}
-                  collection={collection}
-                  foilCollection={foilCollection}
-                  prices={prices}
-                  pricesLoading={pricesLoading}
-                  onAdjust={adjust}
-                  onAdjustFoil={adjustFoil}
-                  onOpenModal={setModalCard}
-                />
-              ))
+              <div className="status">No cards match your filters.</div>
             )}
           </main>
         </>

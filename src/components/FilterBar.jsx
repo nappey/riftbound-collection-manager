@@ -1,12 +1,12 @@
-const TYPES = ['Unit', 'Spell', 'Gear', 'Rune', 'Legend'];
+const TYPES = ['Unit', 'Spell', 'Gear', 'Rune', 'Legend', 'Battlefield'];
 const RARITIES = ['Common', 'Uncommon', 'Rare', 'Showcase'];
 const DOMAINS = ['Body', 'Calm', 'Chaos', 'Colorless', 'Fury', 'Mind', 'Order'];
 const STATUSES = [
-  { value: 'all', label: 'All cards' },
+  { value: 'all', label: 'All' },
   { value: 'owned', label: 'Owned' },
   { value: 'missing', label: 'Missing' },
   { value: 'playset', label: 'Playset ✓' },
-  { value: 'incomplete', label: 'Incomplete playset' },
+  { value: 'incomplete', label: 'Incomplete' },
 ];
 const SORTS = [
   { value: 'collector_number', label: 'Collector #' },
@@ -15,6 +15,31 @@ const SORTS = [
   { value: 'energy', label: 'Energy cost' },
   { value: 'count', label: 'Owned count' },
 ];
+
+function ChipGroup({ label, options, value, allLabel = 'All', onChange }) {
+  return (
+    <div className="filter-chip-group">
+      <span className="filter-chip-label">{label}</span>
+      <div className="filter-chips">
+        <button
+          className={`filter-chip${!value ? ' active' : ''}`}
+          onClick={() => onChange('')}
+        >{allLabel}</button>
+        {options.map((opt) => {
+          const v = typeof opt === 'string' ? opt : opt.value;
+          const l = typeof opt === 'string' ? opt : opt.label;
+          return (
+            <button
+              key={v}
+              className={`filter-chip${value === v ? ' active' : ''}`}
+              onClick={() => onChange(value === v ? '' : v)}
+            >{l}</button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export default function FilterBar({ filters, sort, onChange, onSortChange }) {
   function set(key, val) {
@@ -38,42 +63,12 @@ export default function FilterBar({ filters, sort, onChange, onSortChange }) {
           value={filters.search}
           onChange={(e) => set('search', e.target.value)}
         />
-
-        <select
-          className="filter-select"
-          value={filters.type}
-          onChange={(e) => set('type', e.target.value)}
-        >
-          <option value="">All types</option>
-          {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-        </select>
-
-        <select
-          className="filter-select"
-          value={filters.rarity}
-          onChange={(e) => set('rarity', e.target.value)}
-        >
-          <option value="">All rarities</option>
-          {RARITIES.map((r) => <option key={r} value={r}>{r}</option>)}
-        </select>
-
-        <select
-          className="filter-select"
-          value={filters.domain}
-          onChange={(e) => set('domain', e.target.value)}
-        >
-          <option value="">All domains</option>
-          {DOMAINS.map((d) => <option key={d} value={d}>{d}</option>)}
-        </select>
-
-        <select
-          className="filter-select"
-          value={filters.status}
-          onChange={(e) => set('status', e.target.value)}
-        >
-          {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-        </select>
       </div>
+
+      <ChipGroup label="Type"   options={TYPES}    value={filters.type}   onChange={(v) => set('type', v)} />
+      <ChipGroup label="Rarity" options={RARITIES}  value={filters.rarity} onChange={(v) => set('rarity', v)} />
+      <ChipGroup label="Domain" options={DOMAINS}   value={filters.domain} onChange={(v) => set('domain', v)} />
+      <ChipGroup label="Status" options={STATUSES}  value={filters.status === 'all' ? '' : filters.status} allLabel="All" onChange={(v) => set('status', v || 'all')} />
 
       <div className="filter-row sort-row">
         <span className="sort-label">Sort:</span>

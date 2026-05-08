@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { isAlwaysFoil, formatPlayset } from '../utils/playset';
+import { isAlwaysFoil, isSingleton, isBattlefield, formatPlayset } from '../utils/playset';
 
 const SET_LABELS = {
   OGN: 'Origins', OGS: 'Skirmish', SFD: 'Spiritforged', UNL: 'Unleashed',
@@ -108,18 +108,20 @@ const RARITY_COLOR = {
 function CardEntryScreen({ cards, setLabel, domain, collection, foilCollection, onAdjust, onAdjustFoil, onDone }) {
   const [index, setIndex] = useState(0);
 
-  const card    = cards[index];
+  const card       = cards[index];
   const alwaysFoil = isAlwaysFoil(card);
-  const count   = collection[card.id] ?? 0;
-  const foilCount = foilCollection[card.id] ?? 0;
+  const singleton  = isSingleton(card);
+  const battlefield = isBattlefield(card);
+  const count      = collection[card.id] ?? 0;
+  const foilCount  = foilCollection[card.id] ?? 0;
 
-  const rarity    = card.classification?.rarity?.toLowerCase() ?? '';
+  const rarity     = card.classification?.rarity?.toLowerCase() ?? '';
   const rarityColor = RARITY_COLOR[rarity] ?? '#9090a8';
-  const type      = [card.classification?.supertype, card.classification?.type].filter(Boolean).join(' ');
-  const energy    = card.attributes?.energy;
-  const might     = card.attributes?.might;
-  const power     = card.attributes?.power;
-  const hasStats  = energy != null || might != null || power != null;
+  const type       = [card.classification?.supertype, card.classification?.type].filter(Boolean).join(' ');
+  const energy     = card.attributes?.energy;
+  const might      = card.attributes?.might;
+  const power      = card.attributes?.power;
+  const hasStats   = energy != null || might != null || power != null;
 
   function setCount(n) {
     const delta = n - count;
@@ -138,8 +140,8 @@ function CardEntryScreen({ cards, setLabel, domain, collection, foilCollection, 
   }
 
   const progress = `${index + 1} / ${cards.length}`;
-  const effectiveCount = alwaysFoil ? foilCount : count;
-  const ps = formatPlayset(effectiveCount);
+  const combined = alwaysFoil ? foilCount : count + foilCount;
+  const ps = formatPlayset(combined);
   const foilPs = alwaysFoil ? null : formatPlayset(foilCount);
 
   return (
@@ -188,26 +190,34 @@ function CardEntryScreen({ cards, setLabel, domain, collection, foilCollection, 
             </div>
           )}
 
-          {/* ── Normal counter (non-foil cards only) ── */}
-          {!alwaysFoil && (
+          {/* ── Singleton (Legend / Battlefield) ── */}
+          {singleton && (
+            <div className="se-section">
+              <div className="se-section-label">Have it?</div>
+              <div className="se-playset-btns">
+                <button className={`se-yn-btn${count === 0 && foilCount === 0 ? ' se-yn-active-no' : ''}`} onClick={() => { setCount(0); if (!battlefield) setFoilCount(0); }}>No</button>
+                <button className={`se-yn-btn${count > 0 ? ' se-yn-active-yes' : ''}`} onClick={() => setCount(count > 0 ? 0 : 1)}>Normal</button>
+                {battlefield && (
+                  <button className={`se-yn-btn${foilCount > 0 ? ' se-yn-active-yes' : ''}`} onClick={() => setFoilCount(foilCount > 0 ? 0 : 1)}>✦ Foil</button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── Normal counter (non-foil, non-singleton cards) ── */}
+          {!alwaysFoil && !singleton && (
             <div className="se-section">
               <div className="se-section-label">Playset (×3)?</div>
               <div className="se-playset-btns">
                 <button
-                  className={`se-yn-btn${count === 0 ? ' se-yn-active-no' : ''}`}
+                  className={`se-yn-btn${combined === 0 ? ' se-yn-active-no' : ''}`}
                   onClick={() => setCount(0)}
-                >
-                  No
-                </button>
+                >No</button>
                 <button
-                  className={`se-yn-btn${count >= 3 ? ' se-yn-active-yes' : ''}`}
-                  onClick={() => setCount(count >= 3 ? 0 : 3)}
-                >
-                  Yes
-                </button>
+                  className={`se-yn-btn${combined >= 3 ? ' se-yn-active-yes' : ''}`}
+                  onClick={() => setCount(Math.max(0, 3 - foilCount))}
+                >Yes</button>
               </div>
-              {count === 0 ? null : count < 3 ? null : null}
-              {/* Partial count row */}
               <div className="se-partial-row">
                 <span className="se-partial-label">Have:</span>
                 <div className="se-counter">
@@ -220,20 +230,37 @@ function CardEntryScreen({ cards, setLabel, domain, collection, foilCollection, 
             </div>
           )}
 
-          {/* ── Foil counter ── */}
-          <div className="se-section">
-            <div className="se-section-label">
-              {alwaysFoil ? 'How many?' : 'Foils?'}
+          {/* ── Foil counter (showcase/rare/alt-art + non-singleton regular cards) ── */}
+          {!singleton && (
+            <div className="se-section">
+              <div className="se-section-label">
+                {alwaysFoil ? 'Playset (×3)?' : 'Foils?'}
+              </div>
+              {alwaysFoil && (
+                <div className="se-playset-btns">
+                  <button
+                    className={`se-yn-btn${foilCount === 0 ? ' se-yn-active-no' : ''}`}
+                    onClick={() => setFoilCount(0)}
+                  >No</button>
+                  <button
+                    className={`se-yn-btn${foilCount >= 3 ? ' se-yn-active-yes' : ''}`}
+                    onClick={() => setFoilCount(foilCount >= 3 ? 0 : 3)}
+                  >Yes</button>
+                </div>
+              )}
+              <div className="se-partial-row">
+                <span className="se-partial-label">{alwaysFoil ? 'Have:' : '✦'}</span>
+                <div className="se-counter se-foil-counter">
+                  <button onClick={() => setFoilCount(Math.max(0, foilCount - 1))} disabled={foilCount === 0}>−</button>
+                  <span>{foilCount}</span>
+                  <button onClick={() => setFoilCount(foilCount + 1)}>+</button>
+                </div>
+              </div>
+              {(alwaysFoil ? ps : foilPs) && (
+                <span className="se-ps-label se-foil-ps">{alwaysFoil ? ps : foilPs}</span>
+              )}
             </div>
-            <div className="se-counter se-foil-counter">
-              <button onClick={() => setFoilCount(Math.max(0, foilCount - 1))} disabled={foilCount === 0}>−</button>
-              <span>{foilCount}</span>
-              <button onClick={() => setFoilCount(foilCount + 1)}>+</button>
-            </div>
-            {(alwaysFoil ? ps : foilPs) && (
-              <span className="se-ps-label se-foil-ps">{alwaysFoil ? ps : foilPs}</span>
-            )}
-          </div>
+          )}
 
           {/* ── Navigation ── */}
           <div className="se-nav">

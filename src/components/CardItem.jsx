@@ -1,5 +1,5 @@
 import { useRef, useEffect } from 'react';
-import { formatPlayset, isAlwaysFoil } from '../utils/playset';
+import { formatPlayset, isAlwaysFoil, isSingleton, isBattlefield } from '../utils/playset';
 
 function PriceTag({ price, variant = 'normal', pricesLoading }) {
   if (pricesLoading) return <span className="card-price loading">…</span>;
@@ -28,6 +28,32 @@ function PlaysetCheckbox({ count, onSet }) {
       />
       <span>×3</span>
     </label>
+  );
+}
+
+// Simple "Have it" toggle for singleton cards (Legends, Battlefields)
+function SingletonCounter({ cardId, count, foilCount, showFoil, onAdjust, onAdjustFoil }) {
+  return (
+    <div className="card-singleton">
+      <label className="singleton-check-label">
+        <input
+          type="checkbox"
+          checked={count > 0}
+          onChange={(e) => onAdjust(cardId, e.target.checked ? 1 : -count)}
+        />
+        <span>Have it</span>
+      </label>
+      {showFoil && (
+        <label className="singleton-check-label">
+          <input
+            type="checkbox"
+            checked={foilCount > 0}
+            onChange={(e) => onAdjustFoil(cardId, e.target.checked ? 1 : -foilCount)}
+          />
+          <span>✦ Foil</span>
+        </label>
+      )}
+    </div>
   );
 }
 
@@ -86,14 +112,16 @@ function CardCounters({ card, count, foilCount, price, pricesLoading, onAdjust, 
   );
 }
 
-export default function CardItem({ card, count, foilCount, price, alts = [], pricesLoading, onAdjust, onAdjustFoil, onOpenModal }) {
+export default function CardItem({ card, count, foilCount, price, alts = [], pricesLoading, onAdjust, onAdjustFoil, onOpenModal, lookingFor, upForTrade, onToggleLF, onToggleUFT }) {
   const alwaysFoil = isAlwaysFoil(card);
+  const singleton = isSingleton(card);
+  const battlefield = isBattlefield(card);
   const effectiveCount = alwaysFoil ? foilCount : count + foilCount;
   const imgSrc = card.media?.image_url ?? null;
 
   let className = 'card-item';
   if (effectiveCount > 0 || (!alwaysFoil && foilCount > 0)) className += ' owned';
-  if (effectiveCount >= 3) className += ' playset';
+  if (!singleton && effectiveCount >= 3) className += ' playset';
 
   return (
     <div className={className}>
@@ -113,16 +141,39 @@ export default function CardItem({ card, count, foilCount, price, alts = [], pri
         />
       </div>
 
-      <CardCounters
-        card={card}
-        count={count}
-        foilCount={foilCount}
-        price={price}
-        pricesLoading={pricesLoading}
-        onAdjust={onAdjust}
-        onAdjustFoil={onAdjustFoil}
-        alwaysFoil={alwaysFoil}
-      />
+      {singleton ? (
+        <SingletonCounter
+          cardId={card.id}
+          count={count}
+          foilCount={foilCount}
+          showFoil={battlefield}
+          onAdjust={onAdjust}
+          onAdjustFoil={onAdjustFoil}
+        />
+      ) : (
+        <CardCounters
+          card={card}
+          count={count}
+          foilCount={foilCount}
+          price={price}
+          pricesLoading={pricesLoading}
+          onAdjust={onAdjust}
+          onAdjustFoil={onAdjustFoil}
+          alwaysFoil={alwaysFoil}
+        />
+      )}
+      <div className="card-trade-buttons">
+        <button
+          className={`trade-btn lf${lookingFor ? ' active' : ''}`}
+          onClick={() => onToggleLF?.(card.id)}
+          title="Looking For"
+        >LF</button>
+        <button
+          className={`trade-btn uft${upForTrade ? ' active' : ''}`}
+          onClick={() => onToggleUFT?.(card.id)}
+          title="Up For Trade"
+        >UFT</button>
+      </div>
 
       {/* Alt art cards are always foil */}
       {alts.map(({ card: alt, count: altCount, foilCount: altFoilCount, price: altPrice }) => {

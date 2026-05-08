@@ -268,41 +268,59 @@ body {
   text-transform: uppercase;
 }
 
+/* ─── Set tabs ───────────────────────────────────────────────── */
+.set-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.set-tab {
+  padding: 7px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-2);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+  white-space: nowrap;
+}
+.set-tab:hover { background: var(--surface-2); color: var(--text-1); }
+.set-tab--active {
+  background: rgba(139,92,246,0.15);
+  border-color: var(--purple);
+  color: var(--lavender);
+  font-weight: 600;
+}
+.set-tab--promo { border-color: rgba(245,158,11,0.25); color: var(--gold); }
+.set-tab--promo.set-tab--active {
+  background: rgba(245,158,11,0.12);
+  border-color: var(--gold);
+}
+
 /* ─── Set section ────────────────────────────────────────────── */
 .set-section { margin-bottom: 28px; }
 
-.set-header {
+.set-section-summary {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 16px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--purple-lo);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  user-select: none;
-  transition: background var(--transition), border-color var(--transition);
-}
-.set-header:hover { background: var(--surface-3); }
-
-.set-header h2 {
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--lavender);
-  flex: 1;
-  letter-spacing: 0.01em;
+  margin-bottom: 8px;
 }
 
-.set-summary { font-size: 0.78rem; color: var(--text-2); }
+.set-summary { font-size: 0.78rem; color: var(--text-2); flex-shrink: 0; }
 
 .set-progress-wrap {
-  width: 80px;
+  flex: 1;
   height: 4px;
   background: var(--surface-0);
   border-radius: 99px;
   overflow: hidden;
-  flex-shrink: 0;
 }
 .set-progress-bar {
   height: 100%;
@@ -311,34 +329,8 @@ body {
   transition: width 0.4s ease;
 }
 
-.set-chevron {
-  font-size: 0.75rem;
-  color: var(--text-3);
-  transition: transform 0.2s ease;
-  flex-shrink: 0;
-}
-.set-chevron.open { transform: rotate(180deg); }
-
-/* Promo set variant */
-.set-section--promo .set-header {
-  border-left-color: var(--gold-lo);
-  background: rgba(245,158,11,0.04);
-}
-.set-section--promo .set-header:hover { background: rgba(245,158,11,0.08); }
-.set-section--promo .set-header h2 { color: var(--gold); }
 .set-section--promo .set-progress-bar {
   background: linear-gradient(90deg, var(--gold-lo), var(--gold));
-}
-
-.set-promo-badge {
-  font-size: 0.6rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--bg);
-  background: var(--gold);
-  border-radius: 4px;
-  padding: 2px 6px;
 }
 
 /* ─── Rune sub-section ───────────────────────────────────────── */
@@ -1293,4 +1285,147 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.1em;
   padding: 5px 0 0;
+}
+
+/* ─── Singleton counter (Legends & Battlefields) ─────────────── */
+.card-singleton {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 10px;
+}
+
+.singleton-check-label {
+  display: flex; align-items: center; gap: 6px;
+  cursor: pointer;
+  font-size: 0.78rem;
+  color: var(--text-2);
+  user-select: none;
+  transition: color var(--transition);
+}
+.singleton-check-label:hover { color: var(--text-1); }
+.singleton-check-label input[type="checkbox"] {
+  width: 14px; height: 14px;
+  accent-color: var(--purple);
+  cursor: pointer;
+}
+
+/* ─── LF / UFT trade buttons ─────────────────────────────────── */
+.card-trade-buttons {
+  display: flex;
+  gap: 4px;
+  padding: 4px 8px 8px;
+  justify-content: center;
+}
+
+.trade-btn {
+  flex: 1;
+  padding: 3px 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-0);
+  color: var(--text-3);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+.trade-btn:hover { color: var(--text-2); border-color: var(--text-3); }
+.trade-btn.lf.active {
+  background: rgba(94,234,212,0.1);
+  border-color: var(--teal);
+  color: var(--teal);
+}
+.trade-btn.uft.active {
+  background: rgba(245,158,11,0.1);
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+/* ─── Filter chips ───────────────────────────────────────────── */
+.filter-chip-group {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.filter-chip-label {
+  font-size: 0.7rem;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding-top: 5px;
+  min-width: 48px;
+  flex-shrink: 0;
+}
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.filter-chip {
+  padding: 4px 10px;
+  border-radius: 99px;
+  border: 1px solid var(--border);
+  background: var(--surface-0);
+  color: var(--text-2);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+  white-space: nowrap;
+}
+.filter-chip:hover { background: var(--surface-2); color: var(--text-1); }
+.filter-chip.active {
+  background: rgba(139,92,246,0.15);
+  border-color: var(--purple);
+  color: var(--lavender);
+}
+
+/* ─── Rune Box ───────────────────────────────────────────────── */
+.rune-box {
+  margin-bottom: 28px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--purple);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.rune-box-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 16px;
+  background: rgba(139,92,246,0.07);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition);
+}
+.rune-box-header:hover { background: rgba(139,92,246,0.13); }
+
+.rune-box-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--purple);
+  flex: 1;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.rune-box-summary { font-size: 0.78rem; color: var(--text-2); }
+
+.rune-box-body { padding: 0 16px 8px; }
+
+.rune-box-set { margin-bottom: 8px; }
+
+.rune-box-set-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 10px 0 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
 }

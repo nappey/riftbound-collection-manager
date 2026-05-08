@@ -3,10 +3,9 @@ import { generateDiscord, generateMarkdown, SET_ORDER, SET_LABELS } from '../uti
 
 const DISCORD_LIMIT = 2000;
 
-const DEFAULT_CONTENT = { foils: true, champions: true, signatures: false, allOwned: false };
+const DEFAULT_CONTENT = { foils: true, champions: true, signatures: false, allOwned: false, lookingFor: false, upForTrade: false };
 
-export default function Export({ allCards, collection, foilCollection, prices, pricesLoading }) {
-  // Derive available sets from loaded cards
+export default function Export({ allCards, collection, foilCollection, prices, pricesLoading, lookingFor = {}, upForTrade = {} }) {
   const availableSets = useMemo(() => {
     const seen = new Set();
     for (const c of allCards) {
@@ -22,13 +21,13 @@ export default function Export({ allCards, collection, foilCollection, prices, p
   const [format, setFormat]             = useState('discord');
   const [copied, setCopied]             = useState(false);
 
-  const opts = { allCards, collection, foilCollection, prices, selectedSets, content, includePricing };
+  const opts = { allCards, collection, foilCollection, prices, selectedSets, content, includePricing, lookingFor, upForTrade };
 
   const output = useMemo(() => {
     if (allCards.length === 0) return 'Loading cards…';
     return format === 'discord' ? generateDiscord(opts) : generateMarkdown(opts);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allCards, collection, foilCollection, prices, selectedSets, content, includePricing, format]);
+  }, [allCards, collection, foilCollection, prices, selectedSets, content, includePricing, format, lookingFor, upForTrade]);
 
   const charCount = output.length;
   const overLimit = format === 'discord' && charCount > DISCORD_LIMIT;
@@ -87,6 +86,8 @@ export default function Export({ allCards, collection, foilCollection, prices, p
             ['champions',  '👑 Champions'],
             ['signatures', '✨ Signature Cards'],
             ['allOwned',   '📦 All Owned'],
+            ['lookingFor', '🔍 Looking For'],
+            ['upForTrade', '🔄 Up For Trade'],
           ].map(([key, lbl]) => (
             <label key={key} className="exp-check-label">
               <input type="checkbox" checked={content[key]} onChange={() => toggleContent(key)} />

@@ -22,7 +22,7 @@ function fmt$(n) { return n > 0 ? `$${n.toFixed(2)}` : null; }
 // ── gather owned cards per section ─────────────────────────────
 
 export function gatherSections({ allCards, collection, foilCollection, prices,
-  selectedSets, content, includePricing }) {
+  selectedSets, content, includePricing, lookingFor = {}, upForTrade = {} }) {
 
   const inSet = (c) => selectedSets.includes(c.set?.set_id ?? '');
 
@@ -45,6 +45,14 @@ export function gatherSections({ allCards, collection, foilCollection, prices,
   if (content.allOwned) {
     const cards = allCards.filter(c => inSet(c) && ((collection[c.id] ?? 0) > 0 || (foilCollection[c.id] ?? 0) > 0));
     if (cards.length) sections.push({ key: 'all', label: '📦 Full Collection', cards, foilMode: false });
+  }
+  if (content.lookingFor) {
+    const cards = allCards.filter(c => inSet(c) && lookingFor[c.id]);
+    if (cards.length) sections.push({ key: 'lf', label: '🔍 Looking For', cards, foilMode: false });
+  }
+  if (content.upForTrade) {
+    const cards = allCards.filter(c => inSet(c) && upForTrade[c.id]);
+    if (cards.length) sections.push({ key: 'uft', label: '🔄 Up For Trade', cards, foilMode: false });
   }
 
   // Attach computed values
@@ -121,9 +129,9 @@ function discordSection(section, collection, foilCollection, prices, includePric
 }
 
 export function generateDiscord({ allCards, collection, foilCollection, prices,
-  selectedSets, content, includePricing }) {
+  selectedSets, content, includePricing, lookingFor, upForTrade }) {
   const sections = gatherSections({ allCards, collection, foilCollection, prices,
-    selectedSets, content, includePricing });
+    selectedSets, content, includePricing, lookingFor, upForTrade });
 
   if (!sections.length) return '*(nothing to export with these options)*';
 
@@ -190,9 +198,9 @@ function mdSection(section, collection, foilCollection, prices, includePricing) 
 }
 
 export function generateMarkdown({ allCards, collection, foilCollection, prices,
-  selectedSets, content, includePricing }) {
+  selectedSets, content, includePricing, lookingFor, upForTrade }) {
   const sections = gatherSections({ allCards, collection, foilCollection, prices,
-    selectedSets, content, includePricing });
+    selectedSets, content, includePricing, lookingFor, upForTrade });
 
   if (!sections.length) return '*Nothing to export with these options.*';
 

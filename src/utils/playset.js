@@ -14,3 +14,13 @@ export function isAlwaysFoil(card) {
   const rarity = card.classification?.rarity?.toLowerCase() ?? '';
   return card.metadata?.alternate_art === true || FOIL_RARITIES.has(rarity);
 }
+
+// Legends and Battlefields are singleton cards — you only care about having one
+export function isSingleton(card) {
+  const t = card.classification?.type;
+  return t === 'Legend' || t === 'Battlefield';
+}
+
+export function isBattlefield(card) {
+  return card.classification?.type === 'Battlefield';
+}
