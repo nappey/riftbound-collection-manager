@@ -21,8 +21,8 @@ export function CardGrid({ groups, collection, foilCollection, prices, pricesLoa
           onAdjust={onAdjust}
           onAdjustFoil={onAdjustFoil}
           onOpenModal={onOpenModal}
-          lookingFor={lookingFor[base.id] ?? false}
-          upForTrade={upForTrade[base.id] ?? false}
+          lookingFor={lookingFor}
+          upForTrade={upForTrade}
           onToggleLF={onToggleLF}
           onToggleUFT={onToggleUFT}
         />

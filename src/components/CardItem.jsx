@@ -112,7 +112,7 @@ function CardCounters({ card, count, foilCount, price, pricesLoading, onAdjust, 
   );
 }
 
-export default function CardItem({ card, count, foilCount, price, alts = [], pricesLoading, onAdjust, onAdjustFoil, onOpenModal, lookingFor, upForTrade, onToggleLF, onToggleUFT }) {
+export default function CardItem({ card, count, foilCount, price, alts = [], pricesLoading, onAdjust, onAdjustFoil, onOpenModal, lookingFor = {}, upForTrade = {}, onToggleLF, onToggleUFT }) {
   const alwaysFoil = isAlwaysFoil(card);
   const singleton = isSingleton(card);
   const battlefield = isBattlefield(card);
@@ -164,12 +164,12 @@ export default function CardItem({ card, count, foilCount, price, alts = [], pri
       )}
       <div className="card-trade-buttons">
         <button
-          className={`trade-btn lf${lookingFor ? ' active' : ''}`}
+          className={`trade-btn lf${lookingFor[card.id] ? ' active' : ''}`}
           onClick={() => onToggleLF?.(card.id)}
           title="Looking For"
         >LF</button>
         <button
-          className={`trade-btn uft${upForTrade ? ' active' : ''}`}
+          className={`trade-btn uft${upForTrade[card.id] ? ' active' : ''}`}
           onClick={() => onToggleUFT?.(card.id)}
           title="Up For Trade"
         >UFT</button>
@@ -177,7 +177,7 @@ export default function CardItem({ card, count, foilCount, price, alts = [], pri
 
       {/* Alt art cards are always foil */}
       {alts.map(({ card: alt, count: altCount, foilCount: altFoilCount, price: altPrice }) => {
-        const altAlwaysFoil = isAlwaysFoil(alt); // should always be true for alts
+        const altAlwaysFoil = isAlwaysFoil(alt);
         const altEffective = altAlwaysFoil ? (altFoilCount ?? 0) : altCount + (altFoilCount ?? 0);
         const altLabel = formatPlayset(altEffective);
         return (
@@ -211,6 +211,18 @@ export default function CardItem({ card, count, foilCount, price, alts = [], pri
                 </div>
               </>
             )}
+            <div className="card-trade-buttons">
+              <button
+                className={`trade-btn lf${lookingFor[alt.id] ? ' active' : ''}`}
+                onClick={() => onToggleLF?.(alt.id)}
+                title="Looking For"
+              >LF</button>
+              <button
+                className={`trade-btn uft${upForTrade[alt.id] ? ' active' : ''}`}
+                onClick={() => onToggleUFT?.(alt.id)}
+                title="Up For Trade"
+              >UFT</button>
+            </div>
           </div>
         );
       })}

@@ -66,6 +66,50 @@ export function gatherSections({ allCards, collection, foilCollection, prices,
   }));
 }
 
+// ── Simple name-only list for LF / UFT sections ────────────────
+
+function discordListSection(section) {
+  const { label, cards } = section;
+  const bySet = {};
+  for (const c of cards) {
+    const sid = c.set?.set_id ?? 'UNK';
+    (bySet[sid] = bySet[sid] || []).push(c);
+  }
+  const setIds = [...SET_ORDER.filter(s => bySet[s]),
+                  ...Object.keys(bySet).filter(s => !SET_ORDER.includes(s))];
+  let out = '';
+  for (const sid of setIds) {
+    out += `**${label} — ${SET_LABELS[sid] ?? sid}**\n\`\`\`\n`;
+    for (const c of bySet[sid]) {
+      const isAlt = c.metadata?.alternate_art;
+      out += c.name + (isAlt ? ' ✦ Alt Art' : '') + '\n';
+    }
+    out += '```\n\n';
+  }
+  return out;
+}
+
+function mdListSection(section) {
+  const { label, cards } = section;
+  const bySet = {};
+  for (const c of cards) {
+    const sid = c.set?.set_id ?? 'UNK';
+    (bySet[sid] = bySet[sid] || []).push(c);
+  }
+  const setIds = [...SET_ORDER.filter(s => bySet[s]),
+                  ...Object.keys(bySet).filter(s => !SET_ORDER.includes(s))];
+  let out = `## ${label}\n\n`;
+  for (const sid of setIds) {
+    out += `### ${SET_LABELS[sid] ?? sid}\n\n`;
+    for (const c of bySet[sid]) {
+      const isAlt = c.metadata?.alternate_art;
+      out += `- **${c.name}**${isAlt ? ' ✦ Alt Art' : ''}\n`;
+    }
+    out += '\n';
+  }
+  return out;
+}
+
 // ── Discord format ─────────────────────────────────────────────
 
 function discordSection(section, collection, foilCollection, prices, includePricing, selectedSets) {
@@ -142,7 +186,9 @@ export function generateDiscord({ allCards, collection, foilCollection, prices,
 
   let out = `**Riftbound Collection** • ${setList} • ${date}${valStr}\n\n`;
   for (const sec of sections) {
-    out += discordSection(sec, collection, foilCollection, prices, includePricing, selectedSets);
+    out += (sec.key === 'lf' || sec.key === 'uft')
+      ? discordListSection(sec)
+      : discordSection(sec, collection, foilCollection, prices, includePricing, selectedSets);
   }
 
   return out.trimEnd();
@@ -212,7 +258,9 @@ export function generateMarkdown({ allCards, collection, foilCollection, prices,
   out += '\n\n---\n\n';
 
   for (const sec of sections) {
-    out += mdSection(sec, collection, foilCollection, prices, includePricing);
+    out += (sec.key === 'lf' || sec.key === 'uft')
+      ? mdListSection(sec)
+      : mdSection(sec, collection, foilCollection, prices, includePricing);
   }
 
   return out.trimEnd();
