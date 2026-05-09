@@ -37,8 +37,14 @@ const SET_LABELS = {
   RWB: 'Worlds Bundle 2025',
 };
 
-// Sets that get the "promo" visual treatment
+// Sets shown as their own tabs with promo visual treatment
 const PROMO_SETS = new Set(['OGS', 'OPP', 'PR', 'JDG', 'RWB']);
+// Sets folded into base cards as extra counters (not shown as separate tabs)
+const PROMO_FOLD_SETS = new Set(['OPP', 'PR', 'JDG', 'RWB']);
+// Short labels used inside card items for promo sections
+const PROMO_SHORT_LABELS = {
+  OPP: 'Nexus Night', PR: 'Promo', JDG: 'Judge', RWB: 'Worlds',
+};
 
 async function fetchAllCards() {
   const first = await fetch(`${API_BASE}/cards?size=${PAGE_SIZE}&page=1`).then((r) => {
@@ -250,9 +256,22 @@ export default function App() {
     [allCards]
   );
 
+  // Non-rune promo cards folded into base card as extra counters
+  const promoByName = useMemo(() => {
+    const map = {};
+    for (const card of allCards) {
+      if (PROMO_FOLD_SETS.has(card.set?.set_id) && card.classification?.type !== 'Rune') {
+        const key = card.name.toLowerCase().trim();
+        (map[key] = map[key] || []).push(card);
+      }
+    }
+    return map;
+  }, [allCards]);
+
   const cardsBySet = useMemo(() => {
     const filtered = applyFilters(allCards, filters, collection)
-      .filter(c => c.classification?.type !== 'Rune');
+      .filter(c => c.classification?.type !== 'Rune')
+      .filter(c => !PROMO_FOLD_SETS.has(c.set?.set_id));
     const sorted = applySort(filtered, sort, collection);
     return groupBySet(sorted);
   }, [allCards, filters, sort, collection]);
@@ -302,6 +321,8 @@ export default function App() {
           foilCollection={foilCollection}
           onAdjust={adjust}
           onAdjustFoil={adjustFoil}
+          promoByName={promoByName}
+          promoShortLabels={PROMO_SHORT_LABELS}
         />
       ) : tab === 'deck' ? (
         <DeckCheck allCards={allCards} collection={collection} />
@@ -371,6 +392,8 @@ export default function App() {
                 upForTrade={upForTrade}
                 onToggleLF={toggleLF}
                 onToggleUFT={toggleUFT}
+                promoByName={promoByName}
+                promoShortLabels={PROMO_SHORT_LABELS}
               />
             ) : (
               <div className="status">No cards match your filters.</div>

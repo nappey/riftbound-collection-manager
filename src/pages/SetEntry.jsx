@@ -105,15 +105,22 @@ const RARITY_COLOR = {
   showcase: '#f59e0b', epic: '#f59e0b', promo: '#f472b6',
 };
 
-function CardEntryScreen({ cards, setLabel, domain, collection, foilCollection, onAdjust, onAdjustFoil, onDone }) {
+function CardEntryScreen({ cards, setLabel, domain, collection, foilCollection, onAdjust, onAdjustFoil, onDone, promoByName = {}, promoShortLabels = {} }) {
   const [index, setIndex] = useState(0);
 
-  const card       = cards[index];
-  const alwaysFoil = isAlwaysFoil(card);
-  const singleton  = isSingleton(card);
+  const card        = cards[index];
+  const alwaysFoil  = isAlwaysFoil(card);
+  const singleton   = isSingleton(card);
   const battlefield = isBattlefield(card);
-  const count      = collection[card.id] ?? 0;
-  const foilCount  = foilCollection[card.id] ?? 0;
+  const count       = collection[card.id] ?? 0;
+  const foilCount   = foilCollection[card.id] ?? 0;
+  const cardPromos  = (promoByName[card.name.toLowerCase().trim()] ?? []).map(p => ({
+    card: p,
+    label: promoShortLabels[p.set?.set_id] ?? 'Promo',
+    alwaysFoil: isAlwaysFoil(p),
+    count: collection[p.id] ?? 0,
+    foilCount: foilCollection[p.id] ?? 0,
+  }));
 
   const rarity     = card.classification?.rarity?.toLowerCase() ?? '';
   const rarityColor = RARITY_COLOR[rarity] ?? '#9090a8';
@@ -262,6 +269,60 @@ function CardEntryScreen({ cards, setLabel, domain, collection, foilCollection, 
             </div>
           )}
 
+          {/* ── Promo variants ── */}
+          {cardPromos.map(({ card: p, label, alwaysFoil: pFoil, count: pCount, foilCount: pFoilCount }) => {
+            const pCombined = pFoil ? pFoilCount : pCount + pFoilCount;
+            const pPs = formatPlayset(pCombined);
+            function setPC(n) { const d = n - pCount; if (d) onAdjust(p.id, d); }
+            function setPFC(n) { const d = n - pFoilCount; if (d) onAdjustFoil(p.id, d); }
+            return (
+              <div key={p.id} className="se-section se-promo-section">
+                <div className="se-section-label">{label}{pFoil ? ' ✦' : ''}</div>
+                {pFoil ? (
+                  <>
+                    <div className="se-playset-btns">
+                      <button className={`se-yn-btn${pFoilCount === 0 ? ' se-yn-active-no' : ''}`} onClick={() => setPFC(0)}>No</button>
+                      <button className={`se-yn-btn${pFoilCount >= 3 ? ' se-yn-active-yes' : ''}`} onClick={() => setPFC(pFoilCount >= 3 ? 0 : 3)}>Yes</button>
+                    </div>
+                    <div className="se-partial-row">
+                      <span className="se-partial-label">Have:</span>
+                      <div className="se-counter se-foil-counter">
+                        <button onClick={() => setPFC(Math.max(0, pFoilCount - 1))} disabled={pFoilCount === 0}>−</button>
+                        <span>{pFoilCount}</span>
+                        <button onClick={() => setPFC(pFoilCount + 1)}>+</button>
+                      </div>
+                      {pPs && <span className="se-ps-label se-foil-ps">{pPs}</span>}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="se-playset-btns">
+                      <button className={`se-yn-btn${pCombined === 0 ? ' se-yn-active-no' : ''}`} onClick={() => setPC(0)}>No</button>
+                      <button className={`se-yn-btn${pCombined >= 3 ? ' se-yn-active-yes' : ''}`} onClick={() => setPC(Math.max(0, 3 - pFoilCount))}>Yes</button>
+                    </div>
+                    <div className="se-partial-row">
+                      <span className="se-partial-label">Normal:</span>
+                      <div className="se-counter">
+                        <button onClick={() => setPC(Math.max(0, pCount - 1))} disabled={pCount === 0}>−</button>
+                        <span>{pCount}</span>
+                        <button onClick={() => setPC(pCount + 1)}>+</button>
+                      </div>
+                      {pPs && <span className="se-ps-label">{pPs}</span>}
+                    </div>
+                    <div className="se-partial-row">
+                      <span className="se-partial-label">✦ Foil:</span>
+                      <div className="se-counter se-foil-counter">
+                        <button onClick={() => setPFC(Math.max(0, pFoilCount - 1))} disabled={pFoilCount === 0}>−</button>
+                        <span>{pFoilCount}</span>
+                        <button onClick={() => setPFC(pFoilCount + 1)}>+</button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
+
           {/* ── Navigation ── */}
           <div className="se-nav">
             <button className="se-nav-btn" onClick={() => go(-1)} disabled={index === 0}>← Back</button>
@@ -277,7 +338,7 @@ function CardEntryScreen({ cards, setLabel, domain, collection, foilCollection, 
 
 // ── Page root ──────────────────────────────────────────────────
 
-export default function SetEntry({ allCards, collection, foilCollection, onAdjust, onAdjustFoil }) {
+export default function SetEntry({ allCards, collection, foilCollection, onAdjust, onAdjustFoil, promoByName = {}, promoShortLabels = {} }) {
   const [session, setSession] = useState(null); // { cards, setId, domain }
 
   if (!session) {
@@ -299,6 +360,8 @@ export default function SetEntry({ allCards, collection, foilCollection, onAdjus
       onAdjust={onAdjust}
       onAdjustFoil={onAdjustFoil}
       onDone={() => setSession(null)}
+      promoByName={promoByName}
+      promoShortLabels={promoShortLabels}
     />
   );
 }

@@ -112,7 +112,7 @@ function CardCounters({ card, count, foilCount, price, pricesLoading, onAdjust, 
   );
 }
 
-export default function CardItem({ card, count, foilCount, price, alts = [], pricesLoading, onAdjust, onAdjustFoil, onOpenModal, lookingFor = {}, upForTrade = {}, onToggleLF, onToggleUFT }) {
+export default function CardItem({ card, count, foilCount, price, alts = [], promos = [], pricesLoading, onAdjust, onAdjustFoil, onOpenModal, lookingFor = {}, upForTrade = {}, onToggleLF, onToggleUFT }) {
   const alwaysFoil = isAlwaysFoil(card);
   const singleton = isSingleton(card);
   const battlefield = isBattlefield(card);
@@ -174,6 +174,45 @@ export default function CardItem({ card, count, foilCount, price, alts = [], pri
           title="Up For Trade"
         >UFT</button>
       </div>
+
+      {/* Promo versions folded in from OPP/PR/JDG/RWB */}
+      {promos.map(({ card: promo, count: promoCount, foilCount: promoFoilCount, price: promoPrice, label: promoLabel }) => {
+        const promoAlwaysFoil = isAlwaysFoil(promo);
+        const promoEffective = promoAlwaysFoil ? (promoFoilCount ?? 0) : promoCount + (promoFoilCount ?? 0);
+        const promoPs = formatPlayset(promoEffective);
+        return (
+          <div key={promo.id} className="card-promo">
+            <div className="card-promo-label">
+              {promoLabel}{promoAlwaysFoil && ' ✦'}
+              <PriceTag price={promoPrice} variant={promoAlwaysFoil ? 'foil' : 'normal'} pricesLoading={pricesLoading} />
+            </div>
+            {promoAlwaysFoil ? (
+              <>
+                <Counter cardId={promo.id} count={promoFoilCount ?? 0} onAdjust={onAdjustFoil} label="promo foil" />
+                <div className="card-playset">{promoPs ?? ' '}</div>
+              </>
+            ) : (
+              <>
+                <Counter cardId={promo.id} count={promoCount} foilCount={promoFoilCount ?? 0} onAdjust={onAdjust} label="promo" />
+                <div className="card-playset">{promoPs ?? ' '}</div>
+                <div className="card-foil">
+                  <div className="card-foil-label">Foil</div>
+                  <div className="card-controls">
+                    <button onClick={() => onAdjustFoil(promo.id, -1)} disabled={(promoFoilCount ?? 0) === 0}>−</button>
+                    <span className="card-count">{promoFoilCount ?? 0}</span>
+                    <button onClick={() => onAdjustFoil(promo.id, 1)}>+</button>
+                  </div>
+                  <div className="card-playset">{formatPlayset(promoFoilCount ?? 0) ?? ' '}</div>
+                </div>
+              </>
+            )}
+            <div className="card-trade-buttons">
+              <button className={`trade-btn lf${lookingFor[promo.id] ? ' active' : ''}`} onClick={() => onToggleLF?.(promo.id)} title="Looking For">LF</button>
+              <button className={`trade-btn uft${upForTrade[promo.id] ? ' active' : ''}`} onClick={() => onToggleUFT?.(promo.id)} title="Up For Trade">UFT</button>
+            </div>
+          </div>
+        );
+      })}
 
       {/* Alt art cards are always foil */}
       {alts.map(({ card: alt, count: altCount, foilCount: altFoilCount, price: altPrice }) => {

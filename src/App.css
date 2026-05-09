@@ -1287,6 +1287,30 @@ body {
   padding: 5px 0 0;
 }
 
+/* ─── Promo card section ─────────────────────────────────────── */
+.card-promo {
+  border-top: 1px solid var(--border);
+  background: rgba(94,234,212,0.03);
+}
+
+.card-promo-label {
+  display: flex; align-items: center;
+  justify-content: center; gap: 6px;
+  font-size: 0.62rem;
+  color: var(--teal);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 5px 0 0;
+}
+
+/* SetEntry promo section separator */
+.se-promo-section {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  margin-top: 4px;
+}
+
 /* ─── Singleton counter (Legends & Battlefields) ─────────────── */
 .card-singleton {
   display: flex;
