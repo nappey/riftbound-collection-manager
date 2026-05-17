@@ -187,6 +187,6 @@ export default function ExportButton({ allCards, collection, foilCollection }) {
   }
 
   return (
-    <button className="export-btn" onClick={handleExportCSV}>Export CSV</button>
+    <button className="btn" onClick={handleExportCSV}>Export CSV</button>
   );
 }

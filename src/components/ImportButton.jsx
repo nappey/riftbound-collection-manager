@@ -24,8 +24,8 @@ export default function ImportButton({ allCards, onImport }) {
   }
 
   return (
-    <div className="import-wrap">
-      <button className="import-btn" onClick={() => inputRef.current?.click()}>
+    <div style={{display: 'flex', alignItems: 'center', gap: 8}}>
+      <button className="btn" onClick={() => inputRef.current?.click()}>
         Import CSV
       </button>
       <input
@@ -36,14 +36,14 @@ export default function ImportButton({ allCards, onImport }) {
         onChange={handleFile}
       />
       {status && (
-        <span className="import-status">
-          {status.matched} card{status.matched !== 1 ? 's' : ''} imported
+        <span style={{fontSize: 11, color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 6}}>
+          {status.matched} imported
           {status.unmatched > 0 && (
-            <span className="import-warn" title={status.unmatched_list.join(', ')}>
-              {' '}· {status.unmatched} unmatched
+            <span style={{color: 'var(--warn)'}} title={status.unmatched_list.join(', ')}>
+              · {status.unmatched} unmatched
             </span>
           )}
-          <button className="import-dismiss" onClick={() => setStatus(null)}>×</button>
+          <button className="btn ghost btn-sq" style={{height: 20, width: 20}} onClick={() => setStatus(null)}>×</button>
         </span>
       )}
     </div>

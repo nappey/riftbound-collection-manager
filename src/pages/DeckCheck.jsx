@@ -36,12 +36,6 @@ Sideboard:
 2 Brynhir Thundersong
 2 Downwell`;
 
-function StatusBadge({ have, need }) {
-  if (have >= need) return <span className="dc-badge dc-badge--ok">✓ Have {have}</span>;
-  if (have > 0)     return <span className="dc-badge dc-badge--partial">⚠ Have {have} / {need}</span>;
-  return              <span className="dc-badge dc-badge--missing">✗ Missing</span>;
-}
-
 export default function DeckCheck({ allCards, collection }) {
   const [input, setInput] = useState('');
 
@@ -53,92 +47,138 @@ export default function DeckCheck({ allCards, collection }) {
     return matchDeckList(sections, nameMap);
   }, [input, nameMap]);
 
-  // Summary stats
   const summary = useMemo(() => {
     if (!matched) return null;
-    let totalNeeded = 0, totalMissing = 0, unknownCards = 0;
+    let have = 0, short = 0, missing = 0, unknown = 0, count = 0, unique = 0;
     for (const entries of Object.values(matched)) {
       for (const { quantity, card } of entries) {
-        if (!card) { unknownCards++; continue; }
-        const have = collection[card.id] ?? 0;
-        totalNeeded++;
-        if (have < quantity) totalMissing++;
+        unique++;
+        count += quantity;
+        if (!card) { unknown += quantity; continue; }
+        const h = collection[card.id] ?? 0;
+        if (h >= quantity) have += quantity;
+        else if (h > 0) { have += h; short += (quantity - h); }
+        else missing += quantity;
       }
     }
-    return { totalNeeded, totalMissing, unknownCards, canBuild: totalMissing === 0 && unknownCards === 0 };
+    return {
+      have, short, missing, unknown, count, unique,
+      buildable: short === 0 && missing === 0 && unknown === 0,
+    };
   }, [matched, collection]);
 
-  const sectionIds = matched
-    ? [
-        ...SECTION_ORDER.filter(s => matched[s]),
-        ...Object.keys(matched).filter(s => !SECTION_ORDER.includes(s)),
-      ]
-    : [];
+  const sectionIds = matched ? [
+    ...SECTION_ORDER.filter(s => matched[s]?.length),
+    ...Object.keys(matched).filter(s => !SECTION_ORDER.includes(s) && matched[s]?.length),
+  ] : [];
 
   return (
-    <div className="dc-wrap">
-      <div className="dc-input-col">
-        <h2 className="dc-heading">Deck Check</h2>
-        <p className="dc-hint">Paste a deck list to check it against your collection.</p>
-        <textarea
-          className="dc-textarea"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder={PLACEHOLDER}
-          spellCheck={false}
-        />
-        {input.trim() && (
-          <button className="dc-clear-btn" onClick={() => setInput('')}>Clear</button>
-        )}
-      </div>
-
-      <div className="dc-results-col">
-        {!matched && (
-          <div className="dc-empty">Paste a deck list on the left to get started.</div>
-        )}
-
-        {summary && (
-          <div className={`dc-summary ${summary.canBuild ? 'dc-summary--ok' : 'dc-summary--missing'}`}>
-            {summary.canBuild
-              ? '✓ You have all the cards to build this deck!'
-              : `✗ Missing copies of ${summary.totalMissing} card${summary.totalMissing !== 1 ? 's' : ''}${summary.unknownCards > 0 ? ` · ${summary.unknownCards} unrecognized` : ''}`}
+    <div className="deck-check-wrap">
+      {/* Left: input + parsed sections */}
+      <div>
+        <div className="deck-input-panel">
+          <div className="deck-input-head">
+            <span>Decklist</span>
+            <span className="deck-meta-text">
+              {summary ? `${summary.count} cards · ${summary.unique} unique` : 'Empty'}
+            </span>
           </div>
-        )}
+          <textarea
+            className="deck-textarea"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder={PLACEHOLDER}
+            spellCheck={false}
+          />
+          <div className="deck-btns">
+            <button className="btn" onClick={() => setInput('')}>Clear</button>
+          </div>
+        </div>
 
-        {sectionIds.map((section) => (
-          <div key={section} className="dc-section">
-            <div className="dc-section-header">
-              <span className="dc-section-title">{SECTION_LABELS[section] ?? section}</span>
-              <span className="dc-section-count">
-                {matched[section].reduce((n, e) => n + e.quantity, 0)} cards
-              </span>
+        {matched && sectionIds.map(sec => (
+          <div key={sec} className="dc-section">
+            <div className="dc-section-head">
+              <span className="dc-section-title">{SECTION_LABELS[sec] ?? sec}</span>
+              <span className="dc-section-count">{matched[sec].reduce((n, e) => n + e.quantity, 0)} cards</span>
             </div>
-            <div className="dc-card-list">
-              {matched[section].map(({ name, quantity, card }, i) => {
-                const have = card ? (collection[card.id] ?? 0) : 0;
-                const ok = card && have >= quantity;
-                return (
-                  <div key={i} className={`dc-card-row ${ok ? 'dc-card-row--ok' : card ? 'dc-card-row--short' : 'dc-card-row--unknown'}`}>
-                    <span className="dc-card-qty">×{quantity}</span>
-                    <span className="dc-card-name">
-                      {card?.media?.image_url && (
-                        <img
-                          className="dc-card-thumb"
-                          src={card.media.image_url}
-                          alt=""
-                          loading="lazy"
-                        />
-                      )}
-                      {name}
-                      {!card && <span className="dc-unknown-label"> — not found</span>}
-                    </span>
-                    <StatusBadge have={have} need={quantity} />
-                  </div>
-                );
-              })}
-            </div>
+            {matched[sec].map(({ name, quantity, card }, i) => {
+              const have = card ? (collection[card.id] ?? 0) : 0;
+              const rowClass = !card ? 'unknown' : have >= quantity ? 'have' : have > 0 ? 'short' : 'miss';
+              return (
+                <div key={i} className={`deck-card-row ${rowClass}`}>
+                  <span className="qty">{quantity}×</span>
+                  <span className="name">{name}{!card && <span style={{color: 'var(--text-3)', fontSize: 11}}> — unknown</span>}</span>
+                  <span className="have-count">{card ? `have ${have}` : '—'}</span>
+                  <span className="status-tag">
+                    {rowClass === 'have' ? `✓ ${have}` : rowClass === 'short' ? `⚠ ${have}/${quantity}` : rowClass === 'miss' ? '✗ Missing' : '? Unknown'}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         ))}
+      </div>
+
+      {/* Right: summary */}
+      <div className="deck-summary">
+        {summary && (
+          <>
+            <div className="deck-stat-card" style={{
+              borderColor: summary.buildable ? 'oklch(0.74 0.14 155 / 0.4)' : 'var(--border-0)',
+              background: summary.buildable ? 'oklch(0.74 0.14 155 / 0.06)' : 'var(--bg-1)',
+            }}>
+              <h3>Deck Status</h3>
+              <div className="deck-buildable" style={{color: summary.buildable ? 'var(--ok)' : 'var(--warn)'}}>
+                {summary.buildable ? 'Buildable' : 'Incomplete'}
+              </div>
+              <div style={{fontSize: 12, color: 'var(--text-2)', marginTop: 6}}>
+                {summary.buildable
+                  ? 'Every card is owned in the required quantity.'
+                  : `${summary.short + summary.missing} card${(summary.short + summary.missing) !== 1 ? 's' : ''} short · ${summary.unknown} unknown.`}
+              </div>
+            </div>
+
+            <div className="deck-stat-card">
+              <h3>What's needed</h3>
+              <div style={{display: 'flex', flexDirection: 'column', gap: 4}}>
+                {Object.values(matched).flat()
+                  .filter(({card, quantity}) => card && (collection[card.id] ?? 0) < quantity)
+                  .map(({name, quantity, card}, i) => (
+                    <div key={i} className="deck-needed-row">
+                      <span style={{color: 'var(--text-1)'}}>{name}</span>
+                      <span style={{color: 'var(--warn)', fontFamily: 'var(--font-mono)'}}>
+                        +{quantity - (collection[card.id] ?? 0)}
+                      </span>
+                    </div>
+                  ))}
+                {Object.values(matched).flat().filter(({card}) => !card).map(({name}, i) => (
+                  <div key={'u' + i} className="deck-needed-row">
+                    <span style={{color: 'var(--text-2)'}}>{name}</span>
+                    <span style={{color: 'var(--miss)', fontFamily: 'var(--font-mono)', fontSize: 10.5}}>UNKNOWN</span>
+                  </div>
+                ))}
+                {Object.values(matched).flat().filter(({card, quantity}) => card && (collection[card.id] ?? 0) >= quantity).length === Object.values(matched).flat().filter(({card}) => card).length && (
+                  <div style={{fontSize: 12, color: 'var(--text-3)'}}>Nothing — all set.</div>
+                )}
+              </div>
+            </div>
+
+            <div className="deck-stat-card">
+              <h3>Quick actions</h3>
+              <div style={{display: 'flex', flexDirection: 'column', gap: 6}}>
+                <button className="btn" style={{justifyContent: 'flex-start'}}>Copy missing list</button>
+              </div>
+            </div>
+          </>
+        )}
+        {!matched && (
+          <div className="deck-stat-card">
+            <h3>Instructions</h3>
+            <div style={{fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.6}}>
+              Paste a deck list on the left. Use section headers like <code style={{fontFamily: 'var(--font-mono)', color: 'var(--accent)'}}>Legend:</code>, <code style={{fontFamily: 'var(--font-mono)', color: 'var(--accent)'}}>Champion:</code>, <code style={{fontFamily: 'var(--font-mono)', color: 'var(--accent)'}}>MainDeck:</code> followed by lines like <code style={{fontFamily: 'var(--font-mono)', color: 'var(--accent)'}}>3 Card Name</code>.
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

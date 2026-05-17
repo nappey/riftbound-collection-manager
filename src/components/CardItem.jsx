@@ -1,270 +1,263 @@
-import { useRef, useEffect } from 'react';
-import { formatPlayset, isAlwaysFoil, isSingleton, isBattlefield } from '../utils/playset';
+import { isAlwaysFoil, isSingleton, isBattlefield } from '../utils/playset';
 
-function PriceTag({ price, variant = 'normal', pricesLoading }) {
-  if (pricesLoading) return <span className="card-price loading">…</span>;
-  const p = price?.[variant];
-  if (!p?.market) return null;
-  return (
-    <span className={`card-price${variant === 'foil' ? ' foil' : ''}`}>
-      ${p.market.toFixed(2)}
-    </span>
-  );
-}
+const Plus = () => (
+  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+    <path d="M12 5v14M5 12h14"/>
+  </svg>
+);
+const Minus = () => (
+  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+    <path d="M5 12h14"/>
+  </svg>
+);
+const Sparkle = () => (
+  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <path d="M12 3l1.5 5L18 9.5 13.5 11 12 16l-1.5-5L6 9.5 10.5 8z"/>
+  </svg>
+);
 
-function PlaysetCheckbox({ count, onSet }) {
-  const ref = useRef(null);
-  useEffect(() => {
-    if (ref.current) ref.current.indeterminate = count > 0 && count < 3;
-  }, [count]);
-  return (
-    <label className="playset-check-label" title="Quick-set playset (×3)">
-      <input
-        ref={ref}
-        type="checkbox"
-        className="playset-check"
-        checked={count >= 3}
-        onChange={(e) => onSet(e.target.checked ? 3 : 0)}
-      />
-      <span>×3</span>
-    </label>
-  );
-}
+function fmt(n) { return '$' + (Number(n) || 0).toFixed(2); }
 
-// Simple "Have it" toggle for singleton cards (Legends, Battlefields)
-function SingletonCounter({ cardId, count, foilCount, showFoil, onAdjust, onAdjustFoil }) {
+function Stepper({ count, onDec, onInc, variant = '' }) {
   return (
-    <div className="card-singleton">
-      <label className="singleton-check-label">
-        <input
-          type="checkbox"
-          checked={count > 0}
-          onChange={(e) => onAdjust(cardId, e.target.checked ? 1 : -count)}
-        />
-        <span>Have it</span>
-      </label>
-      {showFoil && (
-        <label className="singleton-check-label">
-          <input
-            type="checkbox"
-            checked={foilCount > 0}
-            onChange={(e) => onAdjustFoil(cardId, e.target.checked ? 1 : -foilCount)}
-          />
-          <span>✦ Foil</span>
-        </label>
-      )}
+    <div className={`stepper${variant ? ` ${variant}` : ''}`}>
+      <button onClick={onDec} disabled={count === 0}><Minus /></button>
+      <span className="val">{count}</span>
+      <button onClick={onInc}><Plus /></button>
     </div>
   );
 }
 
-// A single +/- row with the playset checkbox
-// foilCount is optional — when provided, the checkbox reflects the combined total
-function Counter({ cardId, count, foilCount = 0, onAdjust, label }) {
-  const total = count + foilCount;
+function TagBtn({ label, active, variant, onClick }) {
   return (
-    <div className="card-controls">
-      <PlaysetCheckbox count={total} onSet={(n) => onAdjust(cardId, Math.max(0, n - foilCount) - count)} />
-      <button onClick={() => onAdjust(cardId, -1)} disabled={count === 0} aria-label={`Remove ${label}`}>−</button>
-      <span className="card-count">{count}</span>
-      <button onClick={() => onAdjust(cardId, 1)} aria-label={`Add ${label}`}>+</button>
-    </div>
+    <button
+      className={`tag-btn${active ? ` active ${variant}` : ''}`}
+      onClick={onClick}
+    >{label}</button>
   );
 }
 
-// Renders one card's counters — alwaysFoil cards get a single foil counter,
-// normal cards get a normal counter + a separate foil row.
-function CardCounters({ card, count, foilCount, price, pricesLoading, onAdjust, onAdjustFoil, alwaysFoil }) {
-  const label     = formatPlayset(alwaysFoil ? foilCount : count + foilCount);
-  const foilLabel = formatPlayset(foilCount);
-  const foilPrice = price?.foil?.market != null;
-
-  if (alwaysFoil) {
-    return (
-      <>
-        <Counter
-          cardId={card.id}
-          count={foilCount}
-          onAdjust={onAdjustFoil}
-          label="foil"
-        />
-        <div className="card-playset">{label ?? ' '}</div>
-      </>
-    );
-  }
-
-  return (
-    <>
-      <Counter cardId={card.id} count={count} foilCount={foilCount} onAdjust={onAdjust} label="one" />
-      <div className="card-playset">{label ?? ' '}</div>
-      <div className="card-foil">
-        <div className="card-foil-label">
-          Foil
-          <PriceTag price={price} variant="foil" pricesLoading={foilPrice ? pricesLoading : false} />
-        </div>
-        <div className="card-controls">
-          <button onClick={() => onAdjustFoil(card.id, -1)} disabled={foilCount === 0} aria-label="Remove foil">−</button>
-          <span className="card-count">{foilCount}</span>
-          <button onClick={() => onAdjustFoil(card.id, 1)} aria-label="Add foil">+</button>
-        </div>
-        <div className="card-playset">{foilLabel ?? ' '}</div>
-      </div>
-    </>
-  );
-}
-
-export default function CardItem({ card, count, foilCount, price, alts = [], promos = [], pricesLoading, onAdjust, onAdjustFoil, onOpenModal, lookingFor = {}, upForTrade = {}, onToggleLF, onToggleUFT }) {
+export default function CardItem({
+  card, count, foilCount, price, alts = [], promos = [],
+  pricesLoading, onAdjust, onAdjustFoil, onOpenModal,
+  lookingFor = {}, upForTrade = {}, onToggleLF, onToggleUFT
+}) {
   const alwaysFoil = isAlwaysFoil(card);
   const singleton = isSingleton(card);
   const battlefield = isBattlefield(card);
-  const effectiveCount = alwaysFoil ? foilCount : count + foilCount;
-  const imgSrc = card.media?.image_url ?? null;
 
-  let className = 'card-item';
-  if (effectiveCount > 0 || (!alwaysFoil && foilCount > 0)) className += ' owned';
-  if (!singleton && effectiveCount >= 3) className += ' playset';
+  const effectiveCount = alwaysFoil ? foilCount : count + foilCount;
+
+  let status;
+  if (singleton) {
+    status = (count > 0 || (battlefield && foilCount > 0)) ? 'playset' : 'missing';
+  } else if (effectiveCount >= 3) {
+    status = 'playset';
+  } else if (effectiveCount > 0) {
+    status = 'incomplete';
+  } else {
+    status = 'missing';
+  }
+
+  const imgSrc = card.media?.image_url ?? null;
+  const domain = (card.classification?.domain?.[0] ?? '').toLowerCase();
+  const rarity  = (card.classification?.rarity ?? '').toLowerCase();
+  const normalPrice = price?.normal?.market;
+  const foilPriceVal = price?.foil?.market;
+  const isLF = !!lookingFor[card.id];
+  const isUFT = !!upForTrade[card.id];
+
+  let statusLabel;
+  if (singleton) {
+    statusLabel = count > 0 ? 'Owned' : 'Missing';
+  } else if (status === 'playset') {
+    statusLabel = `Playset${effectiveCount > 3 ? ` +${effectiveCount - 3}` : ''}`;
+  } else if (status === 'missing') {
+    statusLabel = 'Missing';
+  } else {
+    statusLabel = `${alwaysFoil ? foilCount : count}/3 owned`;
+  }
 
   return (
-    <div className={className}>
-      <div className="card-img-btn" onClick={() => onOpenModal?.(card)} title="Click to view">
+    <article className={`card-cell s-${status}`}>
+      <div className="status-stripe"></div>
+
+      {/* Art */}
+      <button className="card-art" onClick={() => onOpenModal?.(card)} title="View details">
         {imgSrc
           ? <img className="card-img" src={imgSrc} alt={card.name} loading="lazy" />
-          : <div className="card-img-placeholder">{card.name}</div>}
-      </div>
+          : <span className="card-art-placeholder">[{card.classification?.type} · {card.id?.toUpperCase()}]</span>
+        }
+        {card.attributes?.energy != null && (
+          <div className="corner cost"><span className="lbl">Cost</span>{card.attributes.energy}</div>
+        )}
+        {card.attributes?.power != null && (
+          <div className="corner power"><span className="lbl">Pow</span>{card.attributes.power}</div>
+        )}
+        <span className="domain-dot" style={{'--domain': `var(--d-${domain})`}}></span>
+        {singleton && <span className="singleton-marker">×1</span>}
+      </button>
 
-      <div className="card-name">
-        {card.name}
-        {alwaysFoil && <span className="card-foil-badge">✦</span>}
-        <PriceTag
-          price={price}
-          variant={alwaysFoil ? 'foil' : 'normal'}
-          pricesLoading={pricesLoading}
-        />
-      </div>
+      {/* Body */}
+      <div className="card-body">
+        <div className="card-title">
+          {card.name}
+          {rarity === 'showcase' && <span className="card-foil-mini">◆</span>}
+        </div>
+        <div className="card-meta">
+          <span>#{card.collector_number}</span>
+          <span className="sep">·</span>
+          <span className="price">
+            {pricesLoading ? '…'
+              : alwaysFoil
+                ? (foilPriceVal ? fmt(foilPriceVal) : '—')
+                : (normalPrice ? fmt(normalPrice) : '—')
+            }
+          </span>
+        </div>
 
-      {singleton ? (
-        <SingletonCounter
-          cardId={card.id}
-          count={count}
-          foilCount={foilCount}
-          showFoil={battlefield}
-          onAdjust={onAdjust}
-          onAdjustFoil={onAdjustFoil}
-        />
-      ) : (
-        <CardCounters
-          card={card}
-          count={count}
-          foilCount={foilCount}
-          price={price}
-          pricesLoading={pricesLoading}
-          onAdjust={onAdjust}
-          onAdjustFoil={onAdjustFoil}
-          alwaysFoil={alwaysFoil}
-        />
-      )}
-      <div className="card-trade-buttons">
-        <button
-          className={`trade-btn lf${lookingFor[card.id] ? ' active' : ''}`}
-          onClick={() => onToggleLF?.(card.id)}
-          title="Looking For"
-        >LF</button>
-        <button
-          className={`trade-btn uft${upForTrade[card.id] ? ' active' : ''}`}
-          onClick={() => onToggleUFT?.(card.id)}
-          title="Up For Trade"
-        >UFT</button>
-      </div>
-
-      {/* Promo versions folded in from OPP/PR/JDG/RWB */}
-      {promos.map(({ card: promo, count: promoCount, foilCount: promoFoilCount, price: promoPrice, label: promoLabel }) => {
-        const promoAlwaysFoil = isAlwaysFoil(promo);
-        const promoEffective = promoAlwaysFoil ? (promoFoilCount ?? 0) : promoCount + (promoFoilCount ?? 0);
-        const promoPs = formatPlayset(promoEffective);
-        return (
-          <div key={promo.id} className="card-promo">
-            <div className="card-promo-label">
-              {promoLabel}{promoAlwaysFoil && ' ✦'}
-              <PriceTag price={promoPrice} variant={promoAlwaysFoil ? 'foil' : 'normal'} pricesLoading={pricesLoading} />
-            </div>
-            {promoAlwaysFoil ? (
-              <>
-                <Counter cardId={promo.id} count={promoFoilCount ?? 0} onAdjust={onAdjustFoil} label="promo foil" />
-                <div className="card-playset">{promoPs ?? ' '}</div>
-              </>
-            ) : (
-              <>
-                <Counter cardId={promo.id} count={promoCount} foilCount={promoFoilCount ?? 0} onAdjust={onAdjust} label="promo" />
-                <div className="card-playset">{promoPs ?? ' '}</div>
-                <div className="card-foil">
-                  <div className="card-foil-label">Foil</div>
-                  <div className="card-controls">
-                    <button onClick={() => onAdjustFoil(promo.id, -1)} disabled={(promoFoilCount ?? 0) === 0}>−</button>
-                    <span className="card-count">{promoFoilCount ?? 0}</span>
-                    <button onClick={() => onAdjustFoil(promo.id, 1)}>+</button>
-                  </div>
-                  <div className="card-playset">{formatPlayset(promoFoilCount ?? 0) ?? ' '}</div>
-                </div>
-              </>
-            )}
-            <div className="card-trade-buttons">
-              <button className={`trade-btn lf${lookingFor[promo.id] ? ' active' : ''}`} onClick={() => onToggleLF?.(promo.id)} title="Looking For">LF</button>
-              <button className={`trade-btn uft${upForTrade[promo.id] ? ' active' : ''}`} onClick={() => onToggleUFT?.(promo.id)} title="Up For Trade">UFT</button>
-            </div>
-          </div>
-        );
-      })}
-
-      {/* Alt art cards are always foil */}
-      {alts.map(({ card: alt, count: altCount, foilCount: altFoilCount, price: altPrice }) => {
-        const altAlwaysFoil = isAlwaysFoil(alt);
-        const altEffective = altAlwaysFoil ? (altFoilCount ?? 0) : altCount + (altFoilCount ?? 0);
-        const altLabel = formatPlayset(altEffective);
-        return (
-          <div key={alt.id} className="card-alt">
-            <div className="card-alt-label">
-              Alt Art ✦
-              <PriceTag price={altPrice} variant={altAlwaysFoil ? 'foil' : 'normal'} pricesLoading={pricesLoading} />
-            </div>
-            {altAlwaysFoil ? (
-              <>
-                <Counter
-                  cardId={alt.id}
-                  count={altFoilCount ?? 0}
-                  onAdjust={onAdjustFoil}
-                  label="alt foil"
+        {/* Singleton row */}
+        {singleton ? (
+          <div className="card-row singleton-row">
+            <label className="singleton-check" onClick={(e) => e.stopPropagation()}>
+              <input
+                type="checkbox"
+                checked={count > 0}
+                onChange={(e) => onAdjust(card.id, e.target.checked ? 1 : -count)}
+              />
+              <span>Have copy <span style={{color: 'var(--text-3)', fontWeight: 400}}>(×1)</span></span>
+            </label>
+            {battlefield && (
+              <label className="singleton-foil-check" onClick={(e) => e.stopPropagation()}>
+                <input
+                  type="checkbox"
+                  checked={foilCount > 0}
+                  onChange={(e) => onAdjustFoil(card.id, e.target.checked ? 1 : -foilCount)}
                 />
-                <div className="card-playset">{altLabel ?? ' '}</div>
-              </>
-            ) : (
-              <>
-                <Counter cardId={alt.id} count={altCount} foilCount={altFoilCount ?? 0} onAdjust={onAdjust} label="alt" />
-                <div className="card-playset">{altLabel ?? ' '}</div>
-                <div className="card-foil">
-                  <div className="card-foil-label">Foil</div>
-                  <div className="card-controls">
-                    <button onClick={() => onAdjustFoil(alt.id, -1)} disabled={(altFoilCount ?? 0) === 0}>−</button>
-                    <span className="card-count">{altFoilCount ?? 0}</span>
-                    <button onClick={() => onAdjustFoil(alt.id, 1)}>+</button>
-                  </div>
-                  <div className="card-playset">{formatPlayset(altFoilCount ?? 0) ?? ' '}</div>
-                </div>
-              </>
+                <span className="foil-lbl"><Sparkle /> Foil</span>
+              </label>
             )}
-            <div className="card-trade-buttons">
-              <button
-                className={`trade-btn lf${lookingFor[alt.id] ? ' active' : ''}`}
-                onClick={() => onToggleLF?.(alt.id)}
-                title="Looking For"
-              >LF</button>
-              <button
-                className={`trade-btn uft${upForTrade[alt.id] ? ' active' : ''}`}
-                onClick={() => onToggleUFT?.(alt.id)}
-                title="Up For Trade"
-              >UFT</button>
+            <div className="card-actions-trail">
+              <TagBtn label="LF" active={isLF} variant="lf" onClick={(e) => { e.stopPropagation(); onToggleLF?.(card.id); }} />
+              <TagBtn label="UFT" active={isUFT} variant="uft" onClick={(e) => { e.stopPropagation(); onToggleUFT?.(card.id); }} />
             </div>
           </div>
-        );
-      })}
-    </div>
+        ) : (
+          <>
+            {/* Regular row — hidden for always-foil */}
+            {!alwaysFoil && (
+              <div className="card-row">
+                <span className="row-lbl">Regular</span>
+                <Stepper count={count} onDec={() => onAdjust(card.id, -1)} onInc={() => onAdjust(card.id, 1)} />
+                <div className="card-actions-trail">
+                  <TagBtn label="LF" active={isLF} variant="lf" onClick={() => onToggleLF?.(card.id)} />
+                  <TagBtn label="UFT" active={isUFT} variant="uft" onClick={() => onToggleUFT?.(card.id)} />
+                </div>
+              </div>
+            )}
+
+            {/* Foil row */}
+            <div className="card-row foil-row">
+              <span className="row-lbl foil"><Sparkle /> Foil</span>
+              <Stepper count={foilCount} onDec={() => onAdjustFoil(card.id, -1)} onInc={() => onAdjustFoil(card.id, 1)} variant="foil" />
+              <span className="foil-price-trail">
+                {foilCount > 0 && foilPriceVal
+                  ? fmt(foilCount * foilPriceVal)
+                  : !pricesLoading && foilPriceVal
+                    ? <span style={{color: 'var(--text-3)'}}>{fmt(foilPriceVal)}/ea</span>
+                    : null
+                }
+              </span>
+              {alwaysFoil && (
+                <div className="card-actions-trail">
+                  <TagBtn label="LF" active={isLF} variant="lf" onClick={() => onToggleLF?.(card.id)} />
+                  <TagBtn label="UFT" active={isUFT} variant="uft" onClick={() => onToggleUFT?.(card.id)} />
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Promo fold-ins */}
+        {promos.length > 0 && (
+          <div className="card-promo-section">
+            {promos.map(({ card: promo, count: pc, foilCount: pfc, price: pp, label: pl }) => {
+              const promoAlwaysFoil = isAlwaysFoil(promo);
+              const promoCount = promoAlwaysFoil ? (pfc ?? 0) : pc;
+              const promoFoilP = pp?.foil?.market;
+              return (
+                <div key={promo.id} className="card-row promo-row">
+                  <span className="row-lbl promo">
+                    {pl}{promoAlwaysFoil && <> <Sparkle /></>}
+                  </span>
+                  <Stepper
+                    count={promoCount}
+                    onDec={() => promoAlwaysFoil ? onAdjustFoil(promo.id, -1) : onAdjust(promo.id, -1)}
+                    onInc={() => promoAlwaysFoil ? onAdjustFoil(promo.id, 1) : onAdjust(promo.id, 1)}
+                    variant={promoAlwaysFoil ? 'foil promo' : 'promo'}
+                  />
+                  {!promoAlwaysFoil && (
+                    <Stepper
+                      count={pfc ?? 0}
+                      onDec={() => onAdjustFoil(promo.id, -1)}
+                      onInc={() => onAdjustFoil(promo.id, 1)}
+                      variant="foil promo"
+                    />
+                  )}
+                  <div className="card-actions-trail">
+                    <TagBtn label="LF" active={!!lookingFor[promo.id]} variant="lf" onClick={() => onToggleLF?.(promo.id)} />
+                    <TagBtn label="UFT" active={!!upForTrade[promo.id]} variant="uft" onClick={() => onToggleUFT?.(promo.id)} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Alt arts */}
+        {alts.length > 0 && alts.map(({ card: alt, count: ac, foilCount: afc, price: ap }) => {
+          const altAlwaysFoil = isAlwaysFoil(alt);
+          const altCount = altAlwaysFoil ? (afc ?? 0) : ac;
+          return (
+            <div key={alt.id} className="card-alt-section">
+              <div className="card-row alt-row">
+                <span className="row-lbl alt">Alt Art ✦</span>
+                <Stepper
+                  count={altCount}
+                  onDec={() => altAlwaysFoil ? onAdjustFoil(alt.id, -1) : onAdjust(alt.id, -1)}
+                  onInc={() => altAlwaysFoil ? onAdjustFoil(alt.id, 1) : onAdjust(alt.id, 1)}
+                  variant={altAlwaysFoil ? 'foil' : ''}
+                />
+                {!altAlwaysFoil && (
+                  <Stepper
+                    count={afc ?? 0}
+                    onDec={() => onAdjustFoil(alt.id, -1)}
+                    onInc={() => onAdjustFoil(alt.id, 1)}
+                    variant="foil"
+                  />
+                )}
+                <div className="card-actions-trail">
+                  <TagBtn label="LF" active={!!lookingFor[alt.id]} variant="lf" onClick={() => onToggleLF?.(alt.id)} />
+                  <TagBtn label="UFT" active={!!upForTrade[alt.id]} variant="uft" onClick={() => onToggleUFT?.(alt.id)} />
+                </div>
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Status row */}
+        <div className="card-row card-status-row">
+          <span className="card-status">
+            <span className="pip"></span>
+            {statusLabel}
+          </span>
+          {!singleton && foilCount > 0 && (
+            <span className="foil-badge">
+              <Sparkle /> {foilCount >= 3 ? `playset${foilCount > 3 ? ` +${foilCount - 3}` : ''}` : `${foilCount}/3`}
+            </span>
+          )}
+        </div>
+      </div>
+    </article>
   );
 }
