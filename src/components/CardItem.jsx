@@ -18,6 +18,13 @@ const Sparkle = () => (
 
 function fmt(n) { return '$' + (Number(n) || 0).toFixed(2); }
 
+const PROMO_ABBREV = {
+  'Nexus Night': 'NN',
+  'Promo': 'PR',
+  'Judge': 'JDG',
+  'Worlds': 'WB',
+};
+
 function Stepper({ count, onDec, onInc, variant = '' }) {
   return (
     <div className={`stepper${variant ? ` ${variant}` : ''}`}>
@@ -110,10 +117,27 @@ export default function CardItem({
           <span className="price">
             {pricesLoading ? '…'
               : alwaysFoil
-                ? (foilPriceVal ? fmt(foilPriceVal) : '—')
+                ? <><span className="meta-foil-sym">✦</span>{foilPriceVal ? fmt(foilPriceVal) : '—'}</>
                 : (normalPrice ? fmt(normalPrice) : '—')
             }
           </span>
+          {!pricesLoading && !alwaysFoil && foilPriceVal && (
+            <>
+              <span className="sep">·</span>
+              <span className="price foil-price"><span className="meta-foil-sym">✦</span>{fmt(foilPriceVal)}</span>
+            </>
+          )}
+          {!pricesLoading && promos.map(({ label, price: pp }) => {
+            const promoPrice = pp?.foil?.market ?? pp?.normal?.market;
+            if (!promoPrice) return null;
+            const abbrev = PROMO_ABBREV[label] ?? label.slice(0, 2).toUpperCase();
+            return (
+              <span key={label} style={{display: 'contents'}}>
+                <span className="sep">·</span>
+                <span className="price promo-price"><span className="meta-promo-sym">{abbrev}</span>{fmt(promoPrice)}</span>
+              </span>
+            );
+          })}
         </div>
 
         {/* Singleton row */}
@@ -160,14 +184,6 @@ export default function CardItem({
             <div className="card-row foil-row">
               <span className="row-lbl foil"><Sparkle /> Foil</span>
               <Stepper count={foilCount} onDec={() => onAdjustFoil(card.id, -1)} onInc={() => onAdjustFoil(card.id, 1)} variant="foil" />
-              <span className="foil-price-trail">
-                {foilCount > 0 && foilPriceVal
-                  ? fmt(foilCount * foilPriceVal)
-                  : !pricesLoading && foilPriceVal
-                    ? <span style={{color: 'var(--text-3)'}}>{fmt(foilPriceVal)}/ea</span>
-                    : null
-                }
-              </span>
               {alwaysFoil && (
                 <div className="card-actions-trail">
                   <TagBtn label="LF" active={isLF} variant="lf" onClick={() => onToggleLF?.(card.id)} />
