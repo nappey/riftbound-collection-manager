@@ -16,8 +16,6 @@ const STORAGE_KEY      = 'riftbound-collection';
 const FOIL_STORAGE_KEY = 'riftbound-collection-foil';
 const LF_KEY           = 'riftbound-looking-for';
 const UFT_KEY          = 'riftbound-up-for-trade';
-// In Electron the main process injects CORS headers, so use the direct URL.
-// In the browser dev server, use the Vite proxy to avoid CORS.
 const IS_ELECTRON = typeof window !== 'undefined' && window.__electron__?.isElectron;
 const TCGCSV_BASE = IS_ELECTRON
   ? 'https://tcgcsv.com/tcgplayer/89'
@@ -37,11 +35,8 @@ const SET_LABELS = {
   RWB: 'Worlds Bundle 2025',
 };
 
-// Sets shown as their own tabs with promo visual treatment
 const PROMO_SETS = new Set(['OGS', 'OPP', 'PR', 'JDG', 'RWB']);
-// Sets folded into base cards as extra counters (not shown as separate tabs)
 const PROMO_FOLD_SETS = new Set(['OPP', 'PR', 'JDG', 'RWB']);
-// Short labels used inside card items for promo sections
 const PROMO_SHORT_LABELS = {
   OPP: 'Nexus Night', PR: 'Promo', JDG: 'Judge', RWB: 'Worlds',
 };
@@ -65,7 +60,6 @@ async function fetchAllPrices() {
       fetch(`${TCGCSV_BASE}/${gid}/prices`).then((r) => r.json())
     )
   );
-
   const priceMap = {};
   for (const res of responses) {
     if (res.status !== 'fulfilled') continue;
@@ -144,17 +138,73 @@ function groupBySet(cards) {
   }, {});
 }
 
-function collectionValue(cards, collection, foilCollection, prices) {
+function totalCollectionValue(cards, collection, foilCollection, prices) {
   return cards.reduce((sum, card) => {
     const p = prices[card.tcgplayer_id] ?? {};
-    const normalVal = (collection[card.id] ?? 0) * (p.normal?.market ?? 0);
-    const foilVal = (foilCollection[card.id] ?? 0) * (p.foil?.market ?? p.normal?.market ?? 0);
-    return sum + normalVal + foilVal;
+    return sum + (collection[card.id] ?? 0) * (p.normal?.market ?? 0)
+               + (foilCollection[card.id] ?? 0) * (p.foil?.market ?? p.normal?.market ?? 0);
   }, 0);
 }
 
 const DEFAULT_FILTERS = { search: '', type: '', rarity: '', domain: '', status: 'all' };
 const DEFAULT_SORT = { field: 'collector_number', dir: 'asc' };
+
+// SVG icons
+const SearchIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
+  </svg>
+);
+const GridIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+    <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+  </svg>
+);
+const RowsIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+  </svg>
+);
+
+function ListRow({ card, count, foilCount, price, pricesLoading, onAdjust, onAdjustFoil }) {
+  const imgSrc = card.media?.image_url ?? null;
+  const domain = (card.classification?.domain?.[0] ?? '').toLowerCase();
+  const rarity = (card.classification?.rarity ?? '').toLowerCase();
+  const normalPrice = price?.normal?.market;
+  const total = count + foilCount;
+  let status = total >= 3 ? 'playset' : total > 0 ? 'incomplete' : 'missing';
+
+  return (
+    <div className={`list-row s-${status}`}>
+      <span className="list-num">#{card.collector_number}</span>
+      <div className="list-thumb">
+        {imgSrc ? <img src={imgSrc} alt={card.name} loading="lazy" /> : null}
+      </div>
+      <div className="list-name">
+        {card.name}
+        <span className="list-id">{card.id?.toUpperCase()}</span>
+      </div>
+      <div className="list-meta">
+        <span>{card.classification?.type}</span>
+        <span style={{color: `var(--d-${domain})`}}>{domain}</span>
+      </div>
+      <span className="list-price">{pricesLoading ? '…' : normalPrice ? `$${normalPrice.toFixed(2)}` : '—'}</span>
+      <div style={{display: 'flex', gap: 6, alignItems: 'center'}}>
+        <div className="stepper">
+          <button onClick={() => onAdjust(card.id, -1)} disabled={count === 0}>−</button>
+          <span className="val">{count}</span>
+          <button onClick={() => onAdjust(card.id, 1)}>+</button>
+        </div>
+        <div className="stepper foil">
+          <button onClick={() => onAdjustFoil(card.id, -1)} disabled={foilCount === 0}>−</button>
+          <span className="val">{foilCount}</span>
+          <button onClick={() => onAdjustFoil(card.id, 1)}>+</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function App() {
   const [allCards, setAllCards] = useState([]);
@@ -181,6 +231,7 @@ export default function App() {
   const [modalCard, setModalCard] = useState(null);
   const [tab, setTab] = useState('collection');
   const [activeSetId, setActiveSetId] = useState(null);
+  const [view, setView] = useState('grid');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -188,27 +239,15 @@ export default function App() {
     fetchAllCards()
       .then((cards) => { setAllCards(cards); setLoading(false); })
       .catch((err) => { setError(err.message); setLoading(false); });
-
     fetchAllPrices()
       .then((map) => { setPrices(map); setPricesLoading(false); })
       .catch(() => setPricesLoading(false));
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(collection));
-  }, [collection]);
-
-  useEffect(() => {
-    localStorage.setItem(FOIL_STORAGE_KEY, JSON.stringify(foilCollection));
-  }, [foilCollection]);
-
-  useEffect(() => {
-    localStorage.setItem(LF_KEY, JSON.stringify(lookingFor));
-  }, [lookingFor]);
-
-  useEffect(() => {
-    localStorage.setItem(UFT_KEY, JSON.stringify(upForTrade));
-  }, [upForTrade]);
+  useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(collection)); }, [collection]);
+  useEffect(() => { localStorage.setItem(FOIL_STORAGE_KEY, JSON.stringify(foilCollection)); }, [foilCollection]);
+  useEffect(() => { localStorage.setItem(LF_KEY, JSON.stringify(lookingFor)); }, [lookingFor]);
+  useEffect(() => { localStorage.setItem(UFT_KEY, JSON.stringify(upForTrade)); }, [upForTrade]);
 
   function adjust(cardId, delta) {
     setCollection((prev) => {
@@ -244,8 +283,6 @@ export default function App() {
     });
   }
 
-  // CSV import: overwrite counts for matched cards, leave others untouched.
-  // Rare/Showcase/AltArt cards go to foilCollection automatically.
   function handleImport({ updates, foilUpdates }) {
     setCollection((prev) => ({ ...prev, ...updates }));
     setFoilCollection((prev) => ({ ...prev, ...foilUpdates }));
@@ -256,7 +293,6 @@ export default function App() {
     [allCards]
   );
 
-  // Non-rune promo cards folded into base card as extra counters
   const promoByName = useMemo(() => {
     const map = {};
     for (const card of allCards) {
@@ -276,13 +312,51 @@ export default function App() {
     return groupBySet(sorted);
   }, [allCards, filters, sort, collection]);
 
-  const totalValue = useMemo(
-    () => collectionValue(allCards, collection, foilCollection, prices),
-    [allCards, collection, foilCollection, prices]
-  );
+  // Stats for all non-promo, non-rune cards
+  const globalStats = useMemo(() => {
+    const nonFolded = allCards.filter(c =>
+      c.classification?.type !== 'Rune' && !PROMO_FOLD_SETS.has(c.set?.set_id)
+    );
+    const ownedCount = nonFolded.filter(c => (collection[c.id] ?? 0) > 0).length;
+    const playsetCount = nonFolded.filter(c => (collection[c.id] ?? 0) >= 3).length;
+    const totalValue = !pricesLoading ? totalCollectionValue(allCards, collection, foilCollection, prices) : null;
+    return {
+      owned: ownedCount,
+      total: nonFolded.length,
+      pct: nonFolded.length ? Math.round((playsetCount / nonFolded.length) * 100) : 0,
+      value: totalValue,
+    };
+  }, [allCards, collection, foilCollection, prices, pricesLoading]);
 
-  if (loading) return <div className="status">Loading cards…</div>;
-  if (error) return <div className="status error">Failed to load cards: {error}</div>;
+  // Per-set stats for tabs
+  const setTabStats = useMemo(() => {
+    const m = {};
+    const allNonFolded = allCards.filter(c =>
+      c.classification?.type !== 'Rune' && !PROMO_FOLD_SETS.has(c.set?.set_id)
+    );
+    const allRunes = allCards.filter(c => c.classification?.type === 'Rune');
+    // Group all non-rune cards by set
+    const grouped = groupBySet(allNonFolded);
+    for (const [sid, { cards }] of Object.entries(grouped)) {
+      const owned = cards.filter(c => (collection[c.id] ?? 0) + (foilCollection[c.id] ?? 0) > 0).length;
+      m[sid] = { total: cards.length, owned, pct: cards.length ? Math.round(owned / cards.length * 100) : 0 };
+    }
+    // Runes
+    const runesOwned = allRunes.filter(c => (collection[c.id] ?? 0) + (foilCollection[c.id] ?? 0) > 0).length;
+    m['runes'] = { total: allRunes.length, owned: runesOwned, pct: allRunes.length ? Math.round(runesOwned / allRunes.length * 100) : 0 };
+    return m;
+  }, [allCards, collection, foilCollection]);
+
+  if (loading) return (
+    <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--text-3)', fontFamily: 'var(--font-mono)'}}>
+      Loading cards…
+    </div>
+  );
+  if (error) return (
+    <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--miss)'}}>
+      Failed to load: {error}
+    </div>
+  );
 
   const setIds = Object.keys(cardsBySet);
   const totalVisible = setIds.reduce((n, id) => n + cardsBySet[id].cards.length, 0);
@@ -290,117 +364,280 @@ export default function App() {
     : setIds.includes(activeSetId) ? activeSetId
     : (setIds[0] ?? null);
 
+  // Active filter chips
+  const activeChips = [];
+  if (filters.type) activeChips.push({ k: 'type', label: filters.type, clear: () => setFilters(f => ({...f, type: ''})) });
+  if (filters.rarity) activeChips.push({ k: 'rarity', label: filters.rarity, clear: () => setFilters(f => ({...f, rarity: ''})) });
+  if (filters.domain) activeChips.push({ k: 'domain', label: filters.domain, clear: () => setFilters(f => ({...f, domain: ''})) });
+  if (filters.status !== 'all') activeChips.push({ k: 'status', label: filters.status, clear: () => setFilters(f => ({...f, status: 'all'})) });
+
+  // Set progress stats for the active set
+  let setProgressStats = null;
+  if (currentSetId && currentSetId !== 'runes') {
+    const setCards = cardsBySet[currentSetId]?.cards ?? [];
+    const allSetCards = allCards.filter(c =>
+      c.set?.set_id === currentSetId &&
+      c.classification?.type !== 'Rune' &&
+      !PROMO_FOLD_SETS.has(c.set?.set_id)
+    );
+    const playsets = allSetCards.filter(c => (collection[c.id] ?? 0) + (foilCollection[c.id] ?? 0) >= 3).length;
+    const partial  = allSetCards.filter(c => {
+      const total = (collection[c.id] ?? 0) + (foilCollection[c.id] ?? 0);
+      return total > 0 && total < 3;
+    }).length;
+    const missing  = allSetCards.length - playsets - partial;
+    const setValue = !pricesLoading ? allSetCards.reduce((sum, card) => {
+      const p = prices[card.tcgplayer_id] ?? {};
+      return sum + (collection[card.id] ?? 0) * (p.normal?.market ?? 0)
+                 + (foilCollection[card.id] ?? 0) * (p.foil?.market ?? p.normal?.market ?? 0);
+    }, 0) : null;
+    setProgressStats = {
+      name: cardsBySet[currentSetId]?.label ?? currentSetId,
+      playsets, partial, missing,
+      total: allSetCards.length,
+      value: setValue,
+      pct: allSetCards.length ? (playsets / allSetCards.length) * 100 : 0,
+      partialPct: allSetCards.length ? (partial / allSetCards.length) * 100 : 0,
+    };
+  }
+
   return (
     <div className="app">
+      {/* ── Header ── */}
       <header className="app-header">
-        <div className="app-header-top">
-          <h1>Riftbound Collection</h1>
-          <div className="header-actions">
-            <ExportButton allCards={allCards} collection={collection} foilCollection={foilCollection} />
-            <ImportButton allCards={allCards} onImport={handleImport} />
+        <div className="brand">
+          <div className="brand-mark"></div>
+          <div className="brand-name">
+            Card Manager <span className="muted">/ Riftbound</span>
           </div>
         </div>
-        <div className="collection-value">
-          {pricesLoading
-            ? 'Loading prices…'
-            : `Collection value: $${totalValue.toFixed(2)}`}
+
+        <div className="global-search">
+          <span className="search-icon"><SearchIcon /></span>
+          <input
+            type="search"
+            placeholder="Search cards…"
+            value={filters.search}
+            onChange={(e) => setFilters(f => ({ ...f, search: e.target.value }))}
+          />
+        </div>
+
+        <div className="header-right">
+          <ExportButton allCards={allCards} collection={collection} foilCollection={foilCollection} />
+          <ImportButton allCards={allCards} onImport={handleImport} />
         </div>
       </header>
 
-      <nav className="tabs">
-        <button className={`tab${tab === 'collection' ? ' tab--active' : ''}`} onClick={() => setTab('collection')}>Collection</button>
-        <button className={`tab${tab === 'entry'      ? ' tab--active' : ''}`} onClick={() => setTab('entry')}>Set Entry</button>
-        <button className={`tab${tab === 'deck'       ? ' tab--active' : ''}`} onClick={() => setTab('deck')}>Deck Check</button>
-        <button className={`tab${tab === 'export'     ? ' tab--active' : ''}`} onClick={() => setTab('export')}>Export</button>
-      </nav>
-
-      {tab === 'entry' ? (
-        <SetEntry
-          allCards={allCards}
-          collection={collection}
-          foilCollection={foilCollection}
-          onAdjust={adjust}
-          onAdjustFoil={adjustFoil}
-          promoByName={promoByName}
-          promoShortLabels={PROMO_SHORT_LABELS}
-        />
-      ) : tab === 'deck' ? (
-        <DeckCheck allCards={allCards} collection={collection} />
-      ) : tab === 'export' ? (
-        <Export
-          allCards={allCards}
-          collection={collection}
-          foilCollection={foilCollection}
-          prices={prices}
-          pricesLoading={pricesLoading}
-          lookingFor={lookingFor}
-          upForTrade={upForTrade}
-        />
-      ) : (
-        <>
-          <FilterBar filters={filters} sort={sort} onChange={setFilters} onSortChange={setSort} />
-
-          {/* ── Set tabs ── */}
-          <div className="set-tabs">
-            <button
-              className={`set-tab${currentSetId === 'runes' ? ' set-tab--active' : ''}`}
-              onClick={() => setActiveSetId('runes')}
-            >Rune Box</button>
-            {setIds.map(sid => (
-              <button
-                key={sid}
-                className={`set-tab${currentSetId === sid ? ' set-tab--active' : ''}${cardsBySet[sid].promo ? ' set-tab--promo' : ''}`}
-                onClick={() => setActiveSetId(sid)}
-              >{cardsBySet[sid].label}</button>
-            ))}
+      {/* ── Subnav ── */}
+      <div className="subnav">
+        <nav className="tabs">
+          <button className={`tab${tab === 'collection' ? ' tab--active' : ''}`} onClick={() => setTab('collection')}>
+            Collection
+            {tab === 'collection' && <span className="tab-count">{totalVisible}</span>}
+          </button>
+          <button className={`tab${tab === 'entry' ? ' tab--active' : ''}`} onClick={() => setTab('entry')}>Set Entry</button>
+          <button className={`tab${tab === 'deck'  ? ' tab--active' : ''}`} onClick={() => setTab('deck')}>Deck Check</button>
+          <button className={`tab${tab === 'export' ? ' tab--active' : ''}`} onClick={() => setTab('export')}>Export</button>
+        </nav>
+        <div className="stats-row">
+          {globalStats.value != null && (
+            <div className="stat">
+              <span className="stat-label">Value</span>
+              <span className="stat-value">${globalStats.value.toFixed(2)}</span>
+            </div>
+          )}
+          <div className="stat">
+            <span className="stat-label">Owned</span>
+            <span className="stat-value">{globalStats.owned}/{globalStats.total}</span>
           </div>
-
-          <div className="results-count">
-            {totalVisible} card{totalVisible !== 1 ? 's' : ''}
+          <div className="stat">
+            <span className="stat-label">Complete</span>
+            <span className="stat-value">{globalStats.pct}%</span>
           </div>
+        </div>
+      </div>
 
-          <main>
-            {currentSetId === 'runes' ? (
-              <RuneBox
-                allRuneCards={allRuneCards}
-                collection={collection}
-                foilCollection={foilCollection}
-                prices={prices}
-                pricesLoading={pricesLoading}
-                onAdjust={adjust}
-                onAdjustFoil={adjustFoil}
-                onOpenModal={setModalCard}
-                lookingFor={lookingFor}
-                upForTrade={upForTrade}
-                onToggleLF={toggleLF}
-                onToggleUFT={toggleUFT}
-              />
-            ) : currentSetId ? (
-              <SetSection
-                key={currentSetId}
-                setName={cardsBySet[currentSetId].label}
-                promo={cardsBySet[currentSetId].promo}
-                cards={cardsBySet[currentSetId].cards}
-                collection={collection}
-                foilCollection={foilCollection}
-                prices={prices}
-                pricesLoading={pricesLoading}
-                onAdjust={adjust}
-                onAdjustFoil={adjustFoil}
-                onOpenModal={setModalCard}
-                lookingFor={lookingFor}
-                upForTrade={upForTrade}
-                onToggleLF={toggleLF}
-                onToggleUFT={toggleUFT}
-                promoByName={promoByName}
-                promoShortLabels={PROMO_SHORT_LABELS}
-              />
-            ) : (
-              <div className="status">No cards match your filters.</div>
-            )}
-          </main>
-        </>
-      )}
+      {/* ── Main ── */}
+      <div className={`main${tab !== 'collection' ? ' no-sidebar' : ''}`}>
+        {/* Sidebar — only in collection tab */}
+        {tab === 'collection' && (
+          <FilterBar
+            filters={filters}
+            sort={sort}
+            onChange={setFilters}
+            onSortChange={setSort}
+            allCards={allCards.filter(c => c.classification?.type !== 'Rune' && !PROMO_FOLD_SETS.has(c.set?.set_id))}
+          />
+        )}
+
+        {/* Content */}
+        <div className="content">
+          {tab === 'entry' ? (
+            <SetEntry
+              allCards={allCards}
+              collection={collection}
+              foilCollection={foilCollection}
+              onAdjust={adjust}
+              onAdjustFoil={adjustFoil}
+              promoByName={promoByName}
+              promoShortLabels={PROMO_SHORT_LABELS}
+            />
+          ) : tab === 'deck' ? (
+            <DeckCheck allCards={allCards} collection={collection} />
+          ) : tab === 'export' ? (
+            <Export
+              allCards={allCards}
+              collection={collection}
+              foilCollection={foilCollection}
+              prices={prices}
+              pricesLoading={pricesLoading}
+              lookingFor={lookingFor}
+              upForTrade={upForTrade}
+            />
+          ) : (
+            <>
+              {/* Set tabs */}
+              <div className="set-tabs-row">
+                <button
+                  className={`set-tab runes-tab${currentSetId === 'runes' ? ' set-tab--active' : ''}`}
+                  onClick={() => setActiveSetId('runes')}
+                >
+                  <span className="set-tab-name">Rune Box</span>
+                  <span className="set-tab-meta">
+                    <span className="set-tab-pct">{setTabStats['runes']?.pct ?? 0}%</span>
+                    <span className="set-tab-count">{setTabStats['runes']?.owned ?? 0}/{setTabStats['runes']?.total ?? 0}</span>
+                  </span>
+                </button>
+                {setIds.map(sid => {
+                  const sc = setTabStats[sid] ?? { total: 0, owned: 0, pct: 0 };
+                  return (
+                    <button
+                      key={sid}
+                      className={`set-tab${currentSetId === sid ? ' set-tab--active' : ''}${cardsBySet[sid].promo ? ' promo-tab' : ''}`}
+                      onClick={() => setActiveSetId(sid)}
+                    >
+                      <span className="set-tab-name">{cardsBySet[sid].label}</span>
+                      <span className="set-tab-meta">
+                        <span className="set-tab-pct">{sc.pct}%</span>
+                        <span className="set-tab-count">{sc.owned}/{sc.total}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Set progress */}
+              {setProgressStats && (
+                <div className="set-progress">
+                  <div className="set-progress-head">
+                    <h2 className="set-progress-title">{setProgressStats.name}</h2>
+                    <span className="set-progress-sub">
+                      {setProgressStats.playsets} playsets · {setProgressStats.partial} in progress · {setProgressStats.missing} missing
+                    </span>
+                  </div>
+                  <div className="progress-legend">
+                    <span className="legend-item"><span className="legend-swatch" style={{background: 'var(--accent)'}}></span> Playset</span>
+                    <span className="legend-item"><span className="legend-swatch" style={{background: 'var(--accent-line)'}}></span> Partial</span>
+                    <span className="legend-item"><span className="legend-swatch" style={{background: 'var(--bg-2)'}}></span> Missing</span>
+                    {setProgressStats.value != null && (
+                      <span style={{marginLeft: 12, color: 'var(--text-0)', fontWeight: 600, fontFamily: 'var(--font-mono)', fontSize: 12}}>
+                        ${setProgressStats.value.toFixed(2)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="set-progress-bar">
+                    <span className="seg-own" style={{width: setProgressStats.pct + '%'}}></span>
+                    <span className="seg-partial" style={{width: setProgressStats.partialPct + '%'}}></span>
+                  </div>
+                </div>
+              )}
+
+              {/* Content toolbar */}
+              <div className="content-toolbar">
+                <div className="active-filters">
+                  {activeChips.length > 0 ? activeChips.map(ch => (
+                    <span key={ch.k} className="active-filter-pill">
+                      {ch.label}
+                      <button className="x-btn" onClick={ch.clear}>×</button>
+                    </span>
+                  )) : (
+                    <span style={{fontSize: 12, color: 'var(--text-3)'}}>No filters applied</span>
+                  )}
+                </div>
+                <div className="view-toggle">
+                  <button className={view === 'grid' ? 'active' : ''} title="Grid view" onClick={() => setView('grid')}><GridIcon /></button>
+                  <button className={view === 'list' ? 'active' : ''} title="List view" onClick={() => setView('list')}><RowsIcon /></button>
+                </div>
+              </div>
+
+              {/* Cards */}
+              {currentSetId === 'runes' ? (
+                <RuneBox
+                  allRuneCards={allRuneCards}
+                  collection={collection}
+                  foilCollection={foilCollection}
+                  prices={prices}
+                  pricesLoading={pricesLoading}
+                  onAdjust={adjust}
+                  onAdjustFoil={adjustFoil}
+                  onOpenModal={setModalCard}
+                  lookingFor={lookingFor}
+                  upForTrade={upForTrade}
+                  onToggleLF={toggleLF}
+                  onToggleUFT={toggleUFT}
+                />
+              ) : currentSetId ? (
+                view === 'list' ? (
+                  <div className="card-list">
+                    <div className="list-row list-head">
+                      <span>#</span>
+                      <span></span>
+                      <span>Name</span>
+                      <span>Type · Domain</span>
+                      <span>Price</span>
+                      <span>Qty</span>
+                    </div>
+                    {cardsBySet[currentSetId].cards.map(card => (
+                      <ListRow
+                        key={card.id}
+                        card={card}
+                        count={collection[card.id] ?? 0}
+                        foilCount={foilCollection[card.id] ?? 0}
+                        price={prices[card.tcgplayer_id] ?? null}
+                        pricesLoading={pricesLoading}
+                        onAdjust={adjust}
+                        onAdjustFoil={adjustFoil}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <SetSection
+                    key={currentSetId}
+                    setName={cardsBySet[currentSetId].label}
+                    promo={cardsBySet[currentSetId].promo}
+                    cards={cardsBySet[currentSetId].cards}
+                    collection={collection}
+                    foilCollection={foilCollection}
+                    prices={prices}
+                    pricesLoading={pricesLoading}
+                    onAdjust={adjust}
+                    onAdjustFoil={adjustFoil}
+                    onOpenModal={setModalCard}
+                    lookingFor={lookingFor}
+                    upForTrade={upForTrade}
+                    onToggleLF={toggleLF}
+                    onToggleUFT={toggleUFT}
+                    promoByName={promoByName}
+                    promoShortLabels={PROMO_SHORT_LABELS}
+                  />
+                )
+              ) : (
+                <div className="status-placeholder">No cards match your filters.</div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
 
       <CardModal
         card={modalCard}

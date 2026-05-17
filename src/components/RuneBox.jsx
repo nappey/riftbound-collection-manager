@@ -4,7 +4,6 @@ import { SET_LABELS } from '../utils/generateExport';
 const SET_ORDER = ['OGN', 'OGS', 'SFD', 'UNL'];
 const RARITY_RANK = { common: 0, uncommon: 1, rare: 2, showcase: 3, epic: 3, promo: 4 };
 
-// Group runes by name — showcase variants of the same rune become "alts"
 function groupRunesByName(cards) {
   const byName = {};
   for (const card of cards) {
@@ -35,34 +34,34 @@ export default function RuneBox({ allRuneCards, collection, foilCollection, pric
   ];
 
   const ownedCount = allRuneCards.filter(c => (collection[c.id] ?? 0) > 0 || (foilCollection[c.id] ?? 0) > 0).length;
-  const setValue = allRuneCards.reduce((sum, card) => {
+  const setValue = !pricesLoading ? allRuneCards.reduce((sum, card) => {
     const p = prices[card.tcgplayer_id] ?? {};
     return sum + (collection[card.id] ?? 0) * (p.normal?.market ?? 0)
                + (foilCollection[card.id] ?? 0) * (p.foil?.market ?? p.normal?.market ?? 0);
-  }, 0);
+  }, 0) : null;
 
   const gridProps = { collection, foilCollection, prices, pricesLoading, onAdjust, onAdjustFoil, onOpenModal, lookingFor, upForTrade, onToggleLF, onToggleUFT };
 
   return (
     <div className="rune-box">
-      <div className="set-section-summary">
-        <div className="set-progress-wrap">
-          <div className="set-progress-bar" style={{ width: `${allRuneCards.length ? Math.round((ownedCount / allRuneCards.length) * 100) : 0}%` }} />
-        </div>
-        <span className="set-summary">
+      <div className="rune-box-header">
+        <h2 className="rune-box-title">Rune Box</h2>
+        <span style={{fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)'}}>
           {ownedCount} / {allRuneCards.length}
-          {!pricesLoading && setValue > 0 && <> · ${setValue.toFixed(2)}</>}
+          {setValue != null && setValue > 0 && <> · ${setValue.toFixed(2)}</>}
         </span>
       </div>
-      {setIds.map(sid => {
-        const groups = groupRunesByName(bySet[sid]);
-        return (
-          <div key={sid} className="rune-box-set">
-            <div className="rune-box-set-label">{SET_LABELS[sid] ?? sid}</div>
-            <CardGrid groups={groups} {...gridProps} />
-          </div>
-        );
-      })}
+      <div className="rune-box-body">
+        {setIds.map(sid => {
+          const groups = groupRunesByName(bySet[sid]);
+          return (
+            <div key={sid} className="rune-box-set">
+              <div className="rune-box-set-label">{SET_LABELS[sid] ?? sid}</div>
+              <CardGrid groups={groups} {...gridProps} />
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

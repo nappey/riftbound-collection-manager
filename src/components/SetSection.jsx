@@ -45,26 +45,9 @@ export default function SetSection({ setName, promo, cards, collection, foilColl
   const nonRunes = cards.filter((c) => c.classification?.type !== 'Rune');
   const cardGroups = groupWithAlts(nonRunes);
 
-  const ownedCount = cards.filter((c) => (collection[c.id] ?? 0) > 0 || (foilCollection[c.id] ?? 0) > 0).length;
-  const setValue = cards.reduce((sum, card) => {
-    const p = prices[card.tcgplayer_id] ?? {};
-    return sum + (collection[card.id] ?? 0) * (p.normal?.market ?? 0)
-               + (foilCollection[card.id] ?? 0) * (p.foil?.market ?? p.normal?.market ?? 0);
-  }, 0);
-  const pct = cards.length ? Math.round((ownedCount / cards.length) * 100) : 0;
-
   return (
     <div className={`set-section${promo ? ' set-section--promo' : ''}`}>
-      <div className="set-section-summary">
-        <div className="set-progress-wrap" title={`${pct}% owned`}>
-          <div className="set-progress-bar" style={{ width: `${pct}%` }} />
-        </div>
-        <span className="set-summary">
-          {ownedCount} / {cards.length}
-          {!pricesLoading && setValue > 0 && <> · ${setValue.toFixed(2)}</>}
-        </span>
-      </div>
-      {cardGroups.length > 0 && (
+      {cardGroups.length > 0 ? (
         <CardGrid
           groups={cardGroups}
           collection={collection}
@@ -81,6 +64,8 @@ export default function SetSection({ setName, promo, cards, collection, foilColl
           promoByName={promoByName}
           promoShortLabels={promoShortLabels}
         />
+      ) : (
+        <div className="status-placeholder">No cards match your filters.</div>
       )}
     </div>
   );
