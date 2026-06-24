@@ -112,8 +112,8 @@ function mdListSection(section) {
 
 // ── Discord format ─────────────────────────────────────────────
 
-function discordSection(section, collection, foilCollection, prices, includePricing, selectedSets) {
-  const { label, cards, foilMode, totalValue } = section;
+function discordSection(section, collection, foilCollection, prices, includePricing) {
+  const { label, cards, foilMode } = section;
 
   // Group by set
   const bySet = {};
@@ -148,7 +148,6 @@ function discordSection(section, collection, foilCollection, prices, includePric
       const ps        = foilMode ? null : formatPlayset(count);
       const pObj      = prices[c.tcgplayer_id] ?? {};
       const price     = foilMode ? (pObj.foil?.market ?? pObj.normal?.market) : pObj.normal?.market;
-      const fPrice    = foilMode ? null : pObj.foil?.market;
 
       let line = pad(c.name, maxName + 1);
       line += foilMode ? `✦ ×${count}` : `  ×${count}`;
@@ -188,7 +187,7 @@ export function generateDiscord({ allCards, collection, foilCollection, prices,
   for (const sec of sections) {
     out += (sec.key === 'lf' || sec.key === 'uft')
       ? discordListSection(sec)
-      : discordSection(sec, collection, foilCollection, prices, includePricing, selectedSets);
+      : discordSection(sec, collection, foilCollection, prices, includePricing);
   }
 
   return out.trimEnd();

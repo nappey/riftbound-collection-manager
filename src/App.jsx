@@ -5,10 +5,14 @@ import FilterBar from './components/FilterBar';
 import ImportButton from './components/ImportButton';
 import ExportButton from './components/ExportButton';
 import CardModal from './components/CardModal';
-import DeckCheck from './pages/DeckCheck';
+import Decks from './pages/Decks';
 import Export from './pages/Export';
 import SetEntry from './pages/SetEntry';
+import TradeBinder from './pages/TradeBinder';
+import Shopping from './pages/Shopping';
+import Stats from './pages/Stats';
 import './App.css';
+import './pages.css';
 
 const API_BASE = 'https://api.riftcodex.com';
 const PAGE_SIZE = 100;
@@ -16,6 +20,7 @@ const STORAGE_KEY      = 'riftbound-collection';
 const FOIL_STORAGE_KEY = 'riftbound-collection-foil';
 const LF_KEY           = 'riftbound-looking-for';
 const UFT_KEY          = 'riftbound-up-for-trade';
+const DECKS_KEY        = 'riftbound-decks';
 const IS_ELECTRON = typeof window !== 'undefined' && window.__electron__?.isElectron;
 const TCGCSV_BASE = IS_ELECTRON
   ? 'https://tcgcsv.com/tcgplayer/89'
@@ -101,7 +106,7 @@ function applyFilters(cards, filters, collection) {
 
 function applySort(cards, sort, collection) {
   return [...cards].sort((a, b) => {
-    let cmp = 0;
+    let cmp;
     switch (sort.field) {
       case 'name':
         cmp = a.name.localeCompare(b.name);
@@ -170,7 +175,6 @@ const RowsIcon = () => (
 function ListRow({ card, count, foilCount, price, pricesLoading, onAdjust, onAdjustFoil }) {
   const imgSrc = card.media?.image_url ?? null;
   const domain = (card.classification?.domain?.[0] ?? '').toLowerCase();
-  const rarity = (card.classification?.rarity ?? '').toLowerCase();
   const normalPrice = price?.normal?.market;
   const total = count + foilCount;
   let status = total >= 3 ? 'playset' : total > 0 ? 'incomplete' : 'missing';
@@ -226,6 +230,10 @@ export default function App() {
     try { return JSON.parse(localStorage.getItem(UFT_KEY)) || {}; }
     catch { return {}; }
   });
+  const [decks, setDecks] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(DECKS_KEY)) || []; }
+    catch { return []; }
+  });
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [sort, setSort] = useState(DEFAULT_SORT);
   const [modalCard, setModalCard] = useState(null);
@@ -248,6 +256,7 @@ export default function App() {
   useEffect(() => { localStorage.setItem(FOIL_STORAGE_KEY, JSON.stringify(foilCollection)); }, [foilCollection]);
   useEffect(() => { localStorage.setItem(LF_KEY, JSON.stringify(lookingFor)); }, [lookingFor]);
   useEffect(() => { localStorage.setItem(UFT_KEY, JSON.stringify(upForTrade)); }, [upForTrade]);
+  useEffect(() => { localStorage.setItem(DECKS_KEY, JSON.stringify(decks)); }, [decks]);
 
   function adjust(cardId, delta) {
     setCollection((prev) => {
@@ -374,7 +383,6 @@ export default function App() {
   // Set progress stats for the active set
   let setProgressStats = null;
   if (currentSetId && currentSetId !== 'runes') {
-    const setCards = cardsBySet[currentSetId]?.cards ?? [];
     const allSetCards = allCards.filter(c =>
       c.set?.set_id === currentSetId &&
       c.classification?.type !== 'Rune' &&
@@ -436,7 +444,10 @@ export default function App() {
             {tab === 'collection' && <span className="tab-count">{totalVisible}</span>}
           </button>
           <button className={`tab${tab === 'entry' ? ' tab--active' : ''}`} onClick={() => setTab('entry')}>Set Entry</button>
-          <button className={`tab${tab === 'deck'  ? ' tab--active' : ''}`} onClick={() => setTab('deck')}>Deck Check</button>
+          <button className={`tab${tab === 'shopping' ? ' tab--active' : ''}`} onClick={() => setTab('shopping')}>Shopping</button>
+          <button className={`tab${tab === 'trade' ? ' tab--active' : ''}`} onClick={() => setTab('trade')}>Trade Binder</button>
+          <button className={`tab${tab === 'stats' ? ' tab--active' : ''}`} onClick={() => setTab('stats')}>Stats</button>
+          <button className={`tab${tab === 'decks' ? ' tab--active' : ''}`} onClick={() => setTab('decks')}>Decks</button>
           <button className={`tab${tab === 'export' ? ' tab--active' : ''}`} onClick={() => setTab('export')}>Export</button>
         </nav>
         <div className="stats-row">
@@ -482,8 +493,50 @@ export default function App() {
               promoByName={promoByName}
               promoShortLabels={PROMO_SHORT_LABELS}
             />
-          ) : tab === 'deck' ? (
-            <DeckCheck allCards={allCards} collection={collection} />
+          ) : tab === 'decks' ? (
+            <Decks
+              allCards={allCards}
+              collection={collection}
+              foilCollection={foilCollection}
+              prices={prices}
+              pricesLoading={pricesLoading}
+              decks={decks}
+              setDecks={setDecks}
+              onOpenModal={setModalCard}
+            />
+          ) : tab === 'shopping' ? (
+            <Shopping
+              allCards={allCards}
+              collection={collection}
+              foilCollection={foilCollection}
+              prices={prices}
+              pricesLoading={pricesLoading}
+              lookingFor={lookingFor}
+              onToggleLF={toggleLF}
+              onOpenModal={setModalCard}
+            />
+          ) : tab === 'trade' ? (
+            <TradeBinder
+              allCards={allCards}
+              collection={collection}
+              foilCollection={foilCollection}
+              prices={prices}
+              pricesLoading={pricesLoading}
+              lookingFor={lookingFor}
+              upForTrade={upForTrade}
+              onToggleLF={toggleLF}
+              onToggleUFT={toggleUFT}
+              onOpenModal={setModalCard}
+            />
+          ) : tab === 'stats' ? (
+            <Stats
+              allCards={allCards}
+              collection={collection}
+              foilCollection={foilCollection}
+              prices={prices}
+              pricesLoading={pricesLoading}
+              onOpenModal={setModalCard}
+            />
           ) : tab === 'export' ? (
             <Export
               allCards={allCards}

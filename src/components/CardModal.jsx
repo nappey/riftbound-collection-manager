@@ -30,7 +30,6 @@ export default function CardModal({ card, price, pricesLoading, onClose }) {
   const imgSrc = card.media?.image_url ?? null;
   const rarity = (card.classification?.rarity ?? '').toLowerCase();
   const type = [card.classification?.supertype, card.classification?.type].filter(Boolean).join(' ');
-  const domain = (card.classification?.domain?.[0] ?? '').toLowerCase();
   const domains = card.classification?.domain ?? [];
   const attrs = card.attributes ?? {};
   const cardText = cleanText(card.text?.plain ?? '');

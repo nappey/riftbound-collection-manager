@@ -1,7 +1,3 @@
-import { formatPlayset } from '../utils/playset';
-
-const SET_ORDER = ['OGN', 'OGS', 'SFD', 'UNL', 'OPP', 'PR', 'JDG', 'RWB'];
-
 const SET_DISPLAY = {
   OGN: 'Origins',
   OGS: 'Skirmish',
@@ -75,82 +71,6 @@ function generateCSV(allCards, collection, foilCollection) {
   return rows.join('\r\n');
 }
 
-// ── Markdown helpers ───────────────────────────────────────────
-
-function cardLine(card, count, foilCount) {
-  const parts = [];
-  if (count > 0) {
-    const ps = formatPlayset(count);
-    parts.push(ps?.includes('playset') ? `×${count} (${ps})` : `×${count}`);
-  }
-  if (foilCount > 0) {
-    const ps = formatPlayset(foilCount);
-    parts.push(ps?.includes('playset') ? `✦ ×${foilCount} foil (${ps})` : `✦ ×${foilCount} foil`);
-  }
-  return `- **${card.name}** — ${parts.join(' · ')}`;
-}
-
-function sectionMarkdown(title, cards, collection, foilCollection) {
-  const owned = cards.filter(
-    (c) => (collection[c.id] ?? 0) > 0 || (foilCollection[c.id] ?? 0) > 0
-  );
-  if (owned.length === 0) return '';
-
-  const bySet = {};
-  for (const card of owned) {
-    const sid = card.set?.set_id ?? 'UNKNOWN';
-    (bySet[sid] = bySet[sid] || []).push(card);
-  }
-  const setIds = [
-    ...SET_ORDER.filter((s) => bySet[s]),
-    ...Object.keys(bySet).filter((s) => !SET_ORDER.includes(s)),
-  ];
-
-  let md = `## ${title}\n\n`;
-  for (const sid of setIds) {
-    md += `### ${SET_DISPLAY[sid] ?? sid}\n\n`;
-    for (const card of bySet[sid]) {
-      md += cardLine(card, collection[card.id] ?? 0, foilCollection[card.id] ?? 0) + '\n';
-    }
-    md += '\n';
-  }
-  return md;
-}
-
-function generateMarkdown(allCards, collection, foilCollection) {
-  const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-  const champions  = allCards.filter((c) => c.classification?.supertype === 'Champion');
-  const signatures = allCards.filter((c) => c.classification?.supertype === 'Signature');
-  const foils      = allCards.filter((c) => (foilCollection[c.id] ?? 0) > 0);
-
-  let md = `# Riftbound Collection — Highlights\n\n*Exported ${date}*\n\n---\n\n`;
-  md += sectionMarkdown('Champions', champions, collection, foilCollection);
-  md += sectionMarkdown('Signature Cards', signatures, collection, foilCollection);
-
-  if (foils.length > 0) {
-    md += '## Foil Cards\n\n';
-    const bySet = {};
-    for (const card of foils) {
-      const sid = card.set?.set_id ?? 'UNKNOWN';
-      (bySet[sid] = bySet[sid] || []).push(card);
-    }
-    const setIds = [
-      ...SET_ORDER.filter((s) => bySet[s]),
-      ...Object.keys(bySet).filter((s) => !SET_ORDER.includes(s)),
-    ];
-    for (const sid of setIds) {
-      md += `### ${SET_DISPLAY[sid] ?? sid}\n\n`;
-      for (const card of bySet[sid]) {
-        const foilCount = foilCollection[card.id] ?? 0;
-        const ps = formatPlayset(foilCount);
-        md += `- ✦ **${card.name}** — ×${foilCount}${ps?.includes('playset') ? ` (${ps})` : ''}\n`;
-      }
-      md += '\n';
-    }
-  }
-  return md;
-}
-
 // ── Shared download util ───────────────────────────────────────
 
 function download(content, filename, mime) {
@@ -169,14 +89,6 @@ function download(content, filename, mime) {
 
 export default function ExportButton({ allCards, collection, foilCollection }) {
   const date = new Date().toISOString().slice(0, 10);
-
-  function handleExportMD() {
-    download(
-      generateMarkdown(allCards, collection, foilCollection),
-      `riftbound-collection-${date}.md`,
-      'text/markdown;charset=utf-8',
-    );
-  }
 
   function handleExportCSV() {
     download(
