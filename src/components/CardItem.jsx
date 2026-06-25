@@ -1,4 +1,4 @@
-import { isAlwaysFoil, isSingleton, isBattlefield } from '../utils/playset';
+import { isAlwaysFoil, isSingleton, isBattlefield, playsetTarget } from '../utils/playset';
 
 const Plus = () => (
   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -40,20 +40,21 @@ function TagBtn({ label, active, variant, onClick }) {
 }
 
 export default function CardItem({
-  card, count, foilCount, price, promos = [], isAlt = false,
+  card, count, foilCount, price, promos = [], isAlt = false, printingLabel = null,
   pricesLoading, onAdjust, onAdjustFoil, onOpenModal,
   lookingFor = {}, upForTrade = {}, onToggleLF, onToggleUFT
 }) {
   const alwaysFoil = isAlwaysFoil(card);
   const singleton = isSingleton(card);
   const battlefield = isBattlefield(card);
+  const target = playsetTarget(card);
 
   const effectiveCount = alwaysFoil ? foilCount : count + foilCount;
 
   let status;
   if (singleton) {
     status = (count > 0 || (battlefield && foilCount > 0)) ? 'playset' : 'missing';
-  } else if (effectiveCount >= 3) {
+  } else if (effectiveCount >= target) {
     status = 'playset';
   } else if (effectiveCount > 0) {
     status = 'incomplete';
@@ -71,11 +72,11 @@ export default function CardItem({
   if (singleton) {
     statusLabel = count > 0 ? 'Owned' : 'Missing';
   } else if (status === 'playset') {
-    statusLabel = `Playset${effectiveCount > 3 ? ` +${effectiveCount - 3}` : ''}`;
+    statusLabel = `Playset${effectiveCount > target ? ` +${effectiveCount - target}` : ''}`;
   } else if (status === 'missing') {
     statusLabel = 'Missing';
   } else {
-    statusLabel = `${alwaysFoil ? foilCount : count + foilCount}/3`;
+    statusLabel = `${alwaysFoil ? foilCount : count + foilCount}/${target}`;
   }
 
   return (
@@ -87,6 +88,7 @@ export default function CardItem({
           : <span className="card-art-placeholder">{card.name}</span>
         }
         {isAlt && <span className="alt-badge">ALT</span>}
+        {printingLabel && <span className="printing-badge">{printingLabel}</span>}
         {singleton && <span className="singleton-marker">×1</span>}
       </button>
 

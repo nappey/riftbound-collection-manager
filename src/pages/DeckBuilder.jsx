@@ -207,7 +207,52 @@ export default function DeckBuilder({
 
           {/* Deck contents */}
           <div className="db-contents">
-            {SECTIONS.map(s => {
+            {/* Champion feature — the deck's Legend + Champion identity, big art */}
+            {(() => {
+              const champRows = [...analysis.bySection.Legend, ...analysis.bySection.Champion];
+              return (
+                <div className="db-section db-champion-section">
+                  <div className="db-section-head">
+                    <span>Champion</span>
+                    {champRows.length > 0 && (
+                      <span className="db-section-count">{champRows.reduce((n, r) => n + r.qty, 0)}</span>
+                    )}
+                  </div>
+                  {champRows.length > 0 ? (
+                    <div className="db-champion-arts">
+                      {champRows.map(({ card, qty, owned, short }) => (
+                        <div key={card.id} className={`db-champion-card${short > 0 ? ' short' : ''}`}>
+                          <button className="db-champion-img" onClick={() => onOpenModal?.(card)} title="View details">
+                            {card.media?.image_url
+                              ? <img src={card.media.image_url} alt={card.name} loading="lazy" />
+                              : <span className="db-tile-ph">{card.name}</span>}
+                            {card.classification?.type === 'Legend' && <span className="db-legend-badge">Legend</span>}
+                          </button>
+                          <div className="db-champion-info">
+                            <span className="db-champion-name">{card.name}{isAlwaysFoil(card) && <span className="db-foil">✦</span>}</span>
+                            <span className={`db-own${short > 0 ? ' short' : ''}`}>
+                              {short > 0 ? `need ${short}` : `✓ owned ${owned}`}
+                            </span>
+                            <div className="stepper">
+                              <button onClick={() => setQty(card.id, -1)}>−</button>
+                              <span className="val">{qty}</span>
+                              <button onClick={() => setQty(card.id, 1)} disabled={qty >= deckCap(card)}>+</button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="db-champion-empty">
+                      Search above and add a <b>Legend</b> or <b>Champion</b> to set your deck’s identity.
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Remaining sections as art tiles */}
+            {SECTIONS.filter(s => s !== 'Legend' && s !== 'Champion').map(s => {
               const rows = analysis.bySection[s];
               if (!rows.length) return null;
               return (
@@ -216,25 +261,31 @@ export default function DeckBuilder({
                     <span>{SECTION_LABELS[s]}</span>
                     <span className="db-section-count">{rows.reduce((n, r) => n + r.qty, 0)}</span>
                   </div>
-                  {rows.map(({ card, qty, owned, short, price }) => (
-                    <div key={card.id} className={`db-card-row${short > 0 ? ' short' : ''}`}>
-                      <div className="stepper">
-                        <button onClick={() => setQty(card.id, -1)}>−</button>
-                        <span className="val">{qty}</span>
-                        <button onClick={() => setQty(card.id, 1)} disabled={qty >= deckCap(card)}>+</button>
+                  <div className="db-tile-grid">
+                    {rows.map(({ card, qty, short }) => (
+                      <div key={card.id} className={`db-tile${short > 0 ? ' short' : ''}`}>
+                        <button className="db-tile-art" onClick={() => onOpenModal?.(card)} title="View details">
+                          {card.media?.image_url
+                            ? <img src={card.media.image_url} alt={card.name} loading="lazy" />
+                            : <span className="db-tile-ph">{card.name}</span>}
+                          <span className="db-tile-qty">{qty}×{isAlwaysFoil(card) && <span className="db-foil">✦</span>}</span>
+                          {short > 0 && <span className="db-tile-need">need {short}</span>}
+                        </button>
+                        <div className="db-tile-foot">
+                          <div className="stepper">
+                            <button onClick={() => setQty(card.id, -1)}>−</button>
+                            <span className="val">{qty}</span>
+                            <button onClick={() => setQty(card.id, 1)} disabled={qty >= deckCap(card)}>+</button>
+                          </div>
+                          <span className="db-tile-name" title={card.name}>{card.name}</span>
+                        </div>
                       </div>
-                      <button className="db-card-name" onClick={() => onOpenModal?.(card)} title="View details">
-                        {card.name}{isAlwaysFoil(card) && <span className="db-foil">✦</span>}
-                      </button>
-                      <span className={`db-own${short > 0 ? ' short' : ''}`}>
-                        {short > 0 ? `need ${short}` : `✓ ${owned}`}
-                      </span>
-                      <span className="db-card-price">{price != null ? fmt$(price) : '—'}</span>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               );
             })}
+
             {analysis.totalCards === 0 && (
               <div className="status-placeholder">Empty deck — search above to add cards.</div>
             )}

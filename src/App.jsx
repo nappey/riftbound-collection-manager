@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import SetSection from './components/SetSection';
 import RuneBox from './components/RuneBox';
+import PromoBox from './components/PromoBox';
 import FilterBar from './components/FilterBar';
 import ImportButton from './components/ImportButton';
 import ExportButton from './components/ExportButton';
@@ -11,6 +12,7 @@ import SetEntry from './pages/SetEntry';
 import TradeBinder from './pages/TradeBinder';
 import Shopping from './pages/Shopping';
 import Stats from './pages/Stats';
+import { fetchTcgProducts, augmentCards } from './utils/tcgAugment';
 import './App.css';
 import './pages.css';
 
@@ -245,7 +247,17 @@ export default function App() {
 
   useEffect(() => {
     fetchAllCards()
-      .then((cards) => { setAllCards(cards); setLoading(false); })
+      .then(async (cards) => {
+        try {
+          // Use TCGplayer data to fix rune prices, add the rune printings
+          // riftcodex is missing (R0Xc OP promos), and swap in the correct
+          // promo art (riftcodex serves base art for promos).
+          const tcg = await fetchTcgProducts(TCGCSV_BASE);
+          cards = augmentCards(cards, tcg);
+        } catch { /* tcgcsv unavailable — fall back to riftcodex data as-is */ }
+        setAllCards(cards);
+        setLoading(false);
+      })
       .catch((err) => { setError(err.message); setLoading(false); });
     fetchAllPrices()
       .then((map) => { setPrices(map); setPricesLoading(false); })
@@ -302,6 +314,11 @@ export default function App() {
     [allCards]
   );
 
+  const allPromoCards = useMemo(
+    () => allCards.filter(c => PROMO_FOLD_SETS.has(c.set?.set_id) && c.classification?.type !== 'Rune'),
+    [allCards]
+  );
+
   const promoByName = useMemo(() => {
     const map = {};
     for (const card of allCards) {
@@ -353,6 +370,10 @@ export default function App() {
     // Runes
     const runesOwned = allRunes.filter(c => (collection[c.id] ?? 0) + (foilCollection[c.id] ?? 0) > 0).length;
     m['runes'] = { total: allRunes.length, owned: runesOwned, pct: allRunes.length ? Math.round(runesOwned / allRunes.length * 100) : 0 };
+    // Promos
+    const allPromos = allCards.filter(c => PROMO_FOLD_SETS.has(c.set?.set_id) && c.classification?.type !== 'Rune');
+    const promosOwned = allPromos.filter(c => (collection[c.id] ?? 0) + (foilCollection[c.id] ?? 0) > 0).length;
+    m['promos'] = { total: allPromos.length, owned: promosOwned, pct: allPromos.length ? Math.round(promosOwned / allPromos.length * 100) : 0 };
     return m;
   }, [allCards, collection, foilCollection]);
 
@@ -369,7 +390,7 @@ export default function App() {
 
   const setIds = Object.keys(cardsBySet);
   const totalVisible = setIds.reduce((n, id) => n + cardsBySet[id].cards.length, 0);
-  const currentSetId = activeSetId === 'runes' ? 'runes'
+  const currentSetId = (activeSetId === 'runes' || activeSetId === 'promos') ? activeSetId
     : setIds.includes(activeSetId) ? activeSetId
     : (setIds[0] ?? null);
 
@@ -382,7 +403,7 @@ export default function App() {
 
   // Set progress stats for the active set
   let setProgressStats = null;
-  if (currentSetId && currentSetId !== 'runes') {
+  if (currentSetId && currentSetId !== 'runes' && currentSetId !== 'promos') {
     const allSetCards = allCards.filter(c =>
       c.set?.set_id === currentSetId &&
       c.classification?.type !== 'Rune' &&
@@ -561,6 +582,16 @@ export default function App() {
                     <span className="set-tab-count">{setTabStats['runes']?.owned ?? 0}/{setTabStats['runes']?.total ?? 0}</span>
                   </span>
                 </button>
+                <button
+                  className={`set-tab promo-tab${currentSetId === 'promos' ? ' set-tab--active' : ''}`}
+                  onClick={() => setActiveSetId('promos')}
+                >
+                  <span className="set-tab-name">Promos</span>
+                  <span className="set-tab-meta">
+                    <span className="set-tab-pct">{setTabStats['promos']?.pct ?? 0}%</span>
+                    <span className="set-tab-count">{setTabStats['promos']?.owned ?? 0}/{setTabStats['promos']?.total ?? 0}</span>
+                  </span>
+                </button>
                 {setIds.map(sid => {
                   const sc = setTabStats[sid] ?? { total: 0, owned: 0, pct: 0 };
                   return (
@@ -627,6 +658,21 @@ export default function App() {
               {currentSetId === 'runes' ? (
                 <RuneBox
                   allRuneCards={allRuneCards}
+                  collection={collection}
+                  foilCollection={foilCollection}
+                  prices={prices}
+                  pricesLoading={pricesLoading}
+                  onAdjust={adjust}
+                  onAdjustFoil={adjustFoil}
+                  onOpenModal={setModalCard}
+                  lookingFor={lookingFor}
+                  upForTrade={upForTrade}
+                  onToggleLF={toggleLF}
+                  onToggleUFT={toggleUFT}
+                />
+              ) : currentSetId === 'promos' ? (
+                <PromoBox
+                  allPromoCards={allPromoCards}
                   collection={collection}
                   foilCollection={foilCollection}
                   prices={prices}

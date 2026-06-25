@@ -122,6 +122,33 @@
 .db-card-price { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3); width: 48px; text-align: right; }
 .db-summary { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 0; }
 
+/* Champion feature — large art for the deck's Legend / Champion identity */
+.db-champion-section { background: var(--bg-1); border: 1px solid var(--border-0); border-radius: var(--radius-lg); overflow: hidden; }
+.db-champion-arts { display: flex; flex-wrap: wrap; gap: 14px; padding: 14px; }
+.db-champion-card { display: flex; gap: 12px; background: var(--bg-2); border: 1px solid var(--border-0); border-radius: var(--radius-md); padding: 10px; max-width: 320px; }
+.db-champion-card.short { border-color: oklch(0.78 0.14 80 / 0.4); }
+.db-champion-img { position: relative; width: 92px; flex-shrink: 0; aspect-ratio: 5 / 7; border-radius: 5px; overflow: hidden; background: var(--bg-1); border: 1px solid var(--border-0); padding: 0; }
+.db-champion-img img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
+.db-champion-img:hover { border-color: var(--accent-line); }
+.db-legend-badge { position: absolute; top: 5px; left: 5px; font-family: var(--font-mono); font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; background: oklch(0 0 0 / 0.65); color: var(--warn); border: 1px solid var(--warn); border-radius: 4px; padding: 1px 4px; }
+.db-champion-info { display: flex; flex-direction: column; gap: 8px; justify-content: center; min-width: 0; }
+.db-champion-name { font-size: 13.5px; font-weight: 600; color: var(--text-0); }
+.db-champion-empty { padding: 22px 14px; font-size: 12.5px; color: var(--text-3); text-align: center; }
+.db-champion-empty b { color: var(--text-1); }
+
+/* Art tiles for deck cards */
+.db-tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); gap: 10px; padding: 12px; }
+.db-tile { display: flex; flex-direction: column; gap: 6px; }
+.db-tile-art { position: relative; aspect-ratio: 5 / 7; border-radius: 6px; overflow: hidden; background: var(--bg-2); border: 1px solid var(--border-0); padding: 0; }
+.db-tile.short .db-tile-art { border-color: oklch(0.78 0.14 80 / 0.5); }
+.db-tile-art img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
+.db-tile-art:hover { border-color: var(--accent-line); }
+.db-tile-ph { display: grid; place-items: center; height: 100%; padding: 6px; font-size: 10px; color: var(--text-3); text-align: center; }
+.db-tile-qty { position: absolute; top: 5px; right: 5px; font-family: var(--font-mono); font-size: 11px; font-weight: 700; background: oklch(0 0 0 / 0.7); color: var(--text-0); border-radius: 5px; padding: 1px 6px; }
+.db-tile-need { position: absolute; bottom: 0; left: 0; right: 0; font-family: var(--font-mono); font-size: 9.5px; text-align: center; background: oklch(0.78 0.14 80 / 0.85); color: #1a1400; padding: 2px; font-weight: 600; }
+.db-tile-foot { display: flex; align-items: center; gap: 6px; }
+.db-tile-name { font-size: 11px; color: var(--text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 /* ---- Stats dashboard ---- */
 .stats-wrap { display: flex; flex-direction: column; gap: 16px; }
 .stats-title { font-size: 20px; margin: 0; letter-spacing: -0.02em; }

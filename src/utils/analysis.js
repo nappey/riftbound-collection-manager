@@ -1,4 +1,4 @@
-import { isAlwaysFoil, isSingleton } from './playset';
+import { isAlwaysFoil, playsetTarget } from './playset';
 
 // Promo sets whose cards are folded into their base card in the main view.
 // Mirrors PROMO_FOLD_SETS in App.jsx — kept here so analysis pages agree.
@@ -10,10 +10,10 @@ export function isPlaysetEligible(card) {
   return card.classification?.type !== 'Rune' && !PROMO_FOLD_SETS.has(card.set?.set_id);
 }
 
-// How many copies make this card "complete".
-// Legends / Battlefields are singletons; everything else is a playset of 3.
+// How many copies make this card "complete": 1 for singletons
+// (Legends/Battlefields), 12 for Runes, otherwise a playset of 3.
 export function cardTarget(card) {
-  return isSingleton(card) ? 1 : 3;
+  return playsetTarget(card);
 }
 
 // Copies owned that count toward completion. Always-foil cards (rares,
