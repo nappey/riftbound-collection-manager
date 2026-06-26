@@ -1,9 +1,24 @@
 'use strict';
 
-const { app, BrowserWindow, session } = require('electron');
+const { app, BrowserWindow, session, ipcMain, net } = require('electron');
 const path = require('path');
 
 const isDev = process.env.ELECTRON_IS_DEV === '1';
+
+// Fetch an image in the main process (no CORS) and return a data URL. The deck
+// image export draws these onto a canvas; data URLs never taint it.
+ipcMain.handle('fetch-image', async (_e, url) => {
+  try {
+    if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return null;
+    const res = await net.fetch(url);
+    if (!res.ok) return null;
+    const ct = res.headers.get('content-type') || 'image/png';
+    const buf = Buffer.from(await res.arrayBuffer());
+    return `data:${ct};base64,${buf.toString('base64')}`;
+  } catch {
+    return null;
+  }
+});
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -20,8 +35,11 @@ function createWindow() {
     },
   });
 
+  // Inject permissive CORS so prices (tcgcsv) load, and so card-image CDNs can
+  // be drawn onto a canvas CORS-clean for the deck image export.
+  const CORS_HOSTS = ['tcgcsv.com', 'cmsassets.rgpub.io', 'tcgplayer-cdn.tcgplayer.com'];
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    if (details.url.includes('tcgcsv.com')) {
+    if (CORS_HOSTS.some(h => details.url.includes(h))) {
       callback({
         responseHeaders: {
           ...details.responseHeaders,
