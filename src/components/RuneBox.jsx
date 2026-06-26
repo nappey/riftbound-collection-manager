@@ -6,8 +6,7 @@ const PRINTING_SHORT = {
   UNL: 'Unleashed', PR: 'Promo', JDG: 'Judge', RWB: 'Worlds',
 };
 function printingLabel(card) {
-  // The alt-art (Showcase) rune printing is the Unleashed art.
-  if (card.metadata?.alternate_art) return 'Unleashed';
+  if (card.metadata?.alternate_art) return 'Showcase';
   return PRINTING_SHORT[card.set?.set_id] ?? card.set?.set_id ?? '';
 }
 

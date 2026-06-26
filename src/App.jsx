@@ -13,6 +13,7 @@ import TradeBinder from './pages/TradeBinder';
 import Shopping from './pages/Shopping';
 import Stats from './pages/Stats';
 import { fetchTcgProducts, augmentCards } from './utils/tcgAugment';
+import { augmentRunes } from './utils/runeArt';
 import './App.css';
 import './pages.css';
 
@@ -249,12 +250,13 @@ export default function App() {
     fetchAllCards()
       .then(async (cards) => {
         try {
-          // Use TCGplayer data to fix rune prices, add the rune printings
-          // riftcodex is missing (R0Xc OP promos), and swap in the correct
-          // promo art (riftcodex serves base art for promos).
+          // Swap in the correct Arcane (PR) promo art (riftcodex serves the
+          // base art for those).
           const tcg = await fetchTcgProducts(TCGCSV_BASE);
           cards = augmentCards(cards, tcg);
         } catch { /* tcgcsv unavailable — fall back to riftcodex data as-is */ }
+        // Curated rune art + missing rune printings (local images).
+        cards = augmentRunes(cards);
         setAllCards(cards);
         setLoading(false);
       })
