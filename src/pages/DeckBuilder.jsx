@@ -76,14 +76,14 @@ function prepopulateRunes(domains) {
 const newDeckObj = () => ({
   id: uid(), name: 'Untitled Deck', updatedAt: Date.now(),
   legendId: null, championId: null,
-  main: {}, sideboard: {}, bench: {}, runes: {}, tags: {}, notes: '', log: [], matches: [],
+  main: {}, sideboard: {}, bench: {}, runes: {}, tags: {}, notes: '', log: [], matches: [], siding: [],
 });
 
 // Ensure a deck has all v2 fields, migrating an old { cards } deck if needed.
 function normalizeDeck(deck, cardById) {
   const d = {
     legendId: null, championId: null, main: {}, sideboard: {}, bench: {}, runes: {}, tags: {},
-    notes: '', log: [], matches: [],
+    notes: '', log: [], matches: [], siding: [],
     ...deck,
   };
   if (deck && !deck.main && deck.cards) {
@@ -115,6 +115,8 @@ export default function DeckBuilder({
   const [mOpp, setMOpp] = useState('');
   const [mResult, setMResult] = useState('W');
   const [mDice, setMDice] = useState('W');
+  const [sidingOpp, setSidingOpp] = useState('');
+  const [sidingCopied, setSidingCopied] = useState(false);
 
   const cardById = useMemo(() => {
     const m = new Map();
@@ -284,6 +286,34 @@ export default function DeckBuilder({
     mutate(active.id, d => ({ ...d, matches: (d.matches ?? []).filter(m => m.id !== id) }));
   }
 
+  // ── siding (sideboard guide) ──────────────────────────────────
+  function addSidingPlan() {
+    if (!sidingOpp) return;
+    const oppLegendId = sidingOpp;
+    mutate(active.id, d => {
+      if ((d.siding ?? []).some(p => p.oppLegendId === oppLegendId)) return d; // one plan per legend
+      return { ...d, siding: [...(d.siding ?? []), { id: uid(), oppLegendId, out: {}, in: {} }] };
+    });
+    setSidingOpp('');
+  }
+  function deleteSidingPlan(id) {
+    mutate(active.id, d => ({ ...d, siding: (d.siding ?? []).filter(p => p.id !== id) }));
+  }
+  // side: 'out' draws from the main deck, 'in' draws from the sideboard.
+  function adjustSiding(planId, side, cardId, delta) {
+    mutate(active.id, d => {
+      const avail = side === 'out' ? (d.main[cardId] ?? 0) : (d.sideboard[cardId] ?? 0);
+      const siding = (d.siding ?? []).map(p => {
+        if (p.id !== planId) return p;
+        const m = { ...p[side] };
+        const next = Math.max(0, Math.min(avail, (m[cardId] ?? 0) + delta));
+        if (next === 0) delete m[cardId]; else m[cardId] = next;
+        return { ...p, [side]: m };
+      });
+      return { ...d, siding };
+    });
+  }
+
   // ── search ────────────────────────────────────────────────────
   const results = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -403,6 +433,20 @@ export default function DeckBuilder({
     }
   }
 
+  async function copySidingGuide() {
+    if (!active || !active.siding.length) return;
+    let out = `${active.name} — Siding Guide\n\n`;
+    for (const p of active.siding) {
+      const opp = cardById.get(p.oppLegendId)?.name ?? 'Unknown legend';
+      const outList = Object.entries(p.out).map(([id, q]) => `-${q} ${cardById.get(id)?.name ?? ''}`).join(', ');
+      const inList = Object.entries(p.in).map(([id, q]) => `+${q} ${cardById.get(id)?.name ?? ''}`).join(', ');
+      out += `vs ${opp}\n  OUT: ${outList || '—'}\n  IN:  ${inList || '—'}\n\n`;
+    }
+    await navigator.clipboard.writeText(out.trimEnd());
+    setSidingCopied(true);
+    setTimeout(() => setSidingCopied(false), 1800);
+  }
+
   // ── shared tile renderer (plain function, not a nested component) ──
   function renderTile(row, zone) {
     const { card, qty } = row;
@@ -461,6 +505,56 @@ export default function DeckBuilder({
           )}
         </div>
         {children}
+      </div>
+    );
+  }
+
+  function renderSidingPlan(plan) {
+    const opp = cardById.get(plan.oppLegendId);
+    const outTotal = sumQty(plan.out);
+    const inTotal = sumQty(plan.in);
+    const balanced = outTotal === inTotal;
+    const outRows = Object.entries(plan.out).map(([id, q]) => ({ card: cardById.get(id), q })).filter(r => r.card);
+    const inRows = Object.entries(plan.in).map(([id, q]) => ({ card: cardById.get(id), q })).filter(r => r.card);
+
+    const sideCol = (label, side, rows, options, availOf) => (
+      <div className="db-siding-col">
+        <div className={`db-siding-col-head ${side}`}>{label}</div>
+        <select
+          className="db-champ-select"
+          value=""
+          onChange={e => { if (e.target.value) { adjustSiding(plan.id, side, e.target.value, 1); e.target.value = ''; } }}
+        >
+          <option value="">{side === 'out' ? '+ card from main deck…' : '+ card from sideboard…'}</option>
+          {options.map(({ card }) => <option key={card.id} value={card.id}>{card.name}</option>)}
+        </select>
+        {rows.length ? rows.map(({ card, q }) => (
+          <div key={card.id} className={`db-siding-row ${side}`}>
+            <span className="db-siding-name" title={card.name}>{card.name}</span>
+            <div className="stepper">
+              <button onClick={() => adjustSiding(plan.id, side, card.id, -1)}>−</button>
+              <span className="val">{q}</span>
+              <button onClick={() => adjustSiding(plan.id, side, card.id, 1)} disabled={q >= availOf(card.id)}>+</button>
+            </div>
+          </div>
+        )) : <div className="db-siding-empty">— none —</div>}
+      </div>
+    );
+
+    return (
+      <div key={plan.id} className="db-siding-plan">
+        <div className="db-siding-head">
+          <button className="db-match-thumb" onClick={() => opp && onOpenModal?.(opp)} title={opp?.name}>
+            {opp?.media?.image_url ? <img src={opp.media.image_url} alt="" loading="lazy" /> : null}
+          </button>
+          <span className="db-siding-opp">vs {opp?.name ?? 'Unknown legend'}</span>
+          <span className={`db-siding-balance ${balanced ? 'ok' : 'warn'}`}>−{outTotal} / +{inTotal} {balanced ? '✓' : '⚠'}</span>
+          <button className="db-match-del" onClick={() => deleteSidingPlan(plan.id)} title="Delete plan">×</button>
+        </div>
+        <div className="db-siding-cols">
+          {sideCol('Side out', 'out', outRows, analysis.mainRows, id => active.main[id] ?? 0)}
+          {sideCol('Side in', 'in', inRows, analysis.sideboardRows, id => active.sideboard[id] ?? 0)}
+        </div>
       </div>
     );
   }
@@ -693,6 +787,27 @@ export default function DeckBuilder({
                     })}
                   </div>
                 )}
+              </div>
+            ))}
+
+            {/* Siding — per-opponent-legend side-out / side-in plans */}
+            {renderSection('Siding', active.siding.length || null, null, (
+              <div className="db-siding">
+                <div className="db-siding-add">
+                  <select className="db-champ-select" value={sidingOpp} onChange={e => setSidingOpp(e.target.value)}>
+                    <option value="">Opponent legend…</option>
+                    {legendCards.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  <button className="btn primary" onClick={addSidingPlan} disabled={!sidingOpp}>Add siding plan</button>
+                  {active.siding.length > 0 && (
+                    <button className="btn" style={{ marginLeft: 'auto' }} onClick={copySidingGuide}>
+                      {sidingCopied ? '✓ Copied' : 'Copy siding guide'}
+                    </button>
+                  )}
+                </div>
+                {active.siding.length === 0
+                  ? <div className="db-zone-empty">No siding plans. Pick an opponent legend to plan what to <b>side out</b> (from your main deck) and <b>side in</b> (from your sideboard).</div>
+                  : active.siding.map(p => renderSidingPlan(p))}
               </div>
             ))}
 
