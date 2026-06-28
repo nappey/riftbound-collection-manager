@@ -6,6 +6,8 @@ import FilterBar from './components/FilterBar';
 import ImportButton from './components/ImportButton';
 import ExportButton from './components/ExportButton';
 import CardModal from './components/CardModal';
+import UpdateToast from './components/UpdateToast';
+import CheckForUpdatesButton from './components/CheckForUpdatesButton';
 import Decks from './pages/Decks';
 import Export from './pages/Export';
 import SetEntry from './pages/SetEntry';
@@ -454,6 +456,7 @@ export default function App() {
         </div>
 
         <div className="header-right">
+          <CheckForUpdatesButton />
           <ExportButton allCards={allCards} collection={collection} foilCollection={foilCollection} />
           <ImportButton allCards={allCards} onImport={handleImport} />
         </div>
@@ -746,6 +749,8 @@ export default function App() {
         pricesLoading={pricesLoading}
         onClose={() => setModalCard(null)}
       />
+
+      <UpdateToast />
     </div>
   );
 }

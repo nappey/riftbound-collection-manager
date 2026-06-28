@@ -1,15 +1,6 @@
 import { useEffect } from 'react';
-
-function cleanText(text) {
-  if (!text) return '';
-  return text
-    .replace(/:rb_energy_(\d+):/g, '[$1]')
-    .replace(/:rb_rune_(\w+):/g, (_, r) => `[${r.charAt(0).toUpperCase() + r.slice(1)}]`)
-    .replace(/\[&gt;\]/g, '→')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>');
-}
+import RiftText from './RiftText';
+import { splitRiftParagraphs } from '../utils/riftText';
 
 const RARITY_CLASS = {
   epic: 'epic',
@@ -32,7 +23,7 @@ export default function CardModal({ card, price, pricesLoading, onClose }) {
   const type = [card.classification?.supertype, card.classification?.type].filter(Boolean).join(' ');
   const domains = card.classification?.domain ?? [];
   const attrs = card.attributes ?? {};
-  const cardText = cleanText(card.text?.plain ?? '');
+  const textParagraphs = splitRiftParagraphs(card.text?.plain ?? '');
   const flavour = card.text?.flavour ?? '';
   const normalPrice = price?.normal?.market;
   const foilPrice = price?.foil?.market;
@@ -103,10 +94,10 @@ export default function CardModal({ card, price, pricesLoading, onClose }) {
             )}
           </div>
 
-          {cardText && (
+          {textParagraphs.length > 0 && (
             <div className="modal-text-area">
-              {cardText.split(/(?=\[Level \d+\])/).map((chunk, i) => (
-                <p key={i}>{chunk.trim()}</p>
+              {textParagraphs.map((chunk, i) => (
+                <p key={i}><RiftText text={chunk} /></p>
               ))}
             </div>
           )}

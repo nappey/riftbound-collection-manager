@@ -2,6 +2,24 @@ import { useMemo, useState, useCallback } from 'react';
 import { isSingleton, isAlwaysFoil } from '../utils/playset';
 import { ownedTotal, unitPrice, fmt$, PROMO_FOLD_SETS } from '../utils/analysis';
 import { exportDeckImage } from '../utils/deckImage';
+import { buildNameMap, deckFromImport } from '../utils/parseDeckList';
+
+const IMPORT_PLACEHOLDER = `Paste a decklist (works with this app's export or
+plain text from other sites):
+
+Legend:
+1 Pyke, Bloodharbor Ripper
+
+MainDeck:
+3 Sneaky Deckhand
+3 Tideturner
+
+Runes:
+6 Fury Rune
+6 Chaos Rune
+
+Sideboard:
+2 Downwell`;
 
 // Deck shape (v2):
 // { id, name, updatedAt, legendId, championId,
@@ -22,9 +40,23 @@ const sumQty = (m) => Object.values(m || {}).reduce((n, q) => n + q, 0);
 const ZONE_LABEL = { main: 'main deck', sideboard: 'sideboard', bench: 'bench' };
 const LOG_MAX = 400;
 
+// Change-log activity categories — drive the filter chips and the badge column.
+const LOG_CATS = {
+  add:      { label: 'Add',      color: 'oklch(0.76 0.18 150)' }, // green
+  remove:   { label: 'Remove',   color: 'oklch(0.66 0.21 25)'  }, // red
+  move:     { label: 'Move',     color: 'oklch(0.70 0.16 250)' }, // blue
+  legend:   { label: 'Legend',   color: 'oklch(0.68 0.20 300)' }, // violet
+  champion: { label: 'Champion', color: 'oklch(0.81 0.16 85)'  }, // amber
+  rune:     { label: 'Rune',     color: 'oklch(0.74 0.14 195)' }, // cyan
+  tag:      { label: 'Tag',      color: 'oklch(0.72 0.18 340)' }, // magenta
+  import:   { label: 'Import',   color: 'oklch(0.72 0.17 45)'  }, // orange
+  other:    { label: 'Other',    color: 'oklch(0.66 0.04 282)' }, // neutral
+};
+const LOG_CAT_ORDER = Object.keys(LOG_CATS);
+
 // Append a change-log entry to a deck (returns a new deck).
-function withLog(d, text) {
-  return { ...d, log: [...(d.log ?? []), { ts: Date.now(), text }].slice(-LOG_MAX) };
+function withLog(d, text, cat = 'other') {
+  return { ...d, log: [...(d.log ?? []), { ts: Date.now(), text, cat }].slice(-LOG_MAX) };
 }
 
 function fmtLogTime(ts) {
@@ -76,14 +108,14 @@ function prepopulateRunes(domains) {
 const newDeckObj = () => ({
   id: uid(), name: 'Untitled Deck', updatedAt: Date.now(),
   legendId: null, championId: null,
-  main: {}, sideboard: {}, bench: {}, runes: {}, tags: {}, notes: '', log: [], matches: [], siding: [],
+  main: {}, sideboard: {}, bench: {}, runes: {}, tags: {}, notes: '', noteLog: [], log: [], matches: [], siding: [],
 });
 
 // Ensure a deck has all v2 fields, migrating an old { cards } deck if needed.
 function normalizeDeck(deck, cardById) {
   const d = {
     legendId: null, championId: null, main: {}, sideboard: {}, bench: {}, runes: {}, tags: {},
-    notes: '', log: [], matches: [], siding: [],
+    notes: '', noteLog: [], log: [], matches: [], siding: [],
     ...deck,
   };
   if (deck && !deck.main && deck.cards) {
@@ -117,12 +149,24 @@ export default function DeckBuilder({
   const [mDice, setMDice] = useState('W');
   const [sidingOpp, setSidingOpp] = useState('');
   const [sidingCopied, setSidingCopied] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState('');
+  const [logCats, setLogCats] = useState([]); // active change-log filters ([] = all)
+  const toggleLogCat = (c) => setLogCats(prev => prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c]);
 
   const cardById = useMemo(() => {
     const m = new Map();
     for (const c of allCards) m.set(c.id, c);
     return m;
   }, [allCards]);
+
+  const nameMap = useMemo(() => buildNameMap(allCards), [allCards]);
+
+  // Live preview of a pasted decklist — same parser the Deck Check uses.
+  const importPreview = useMemo(
+    () => (importText.trim() ? deckFromImport(importText, nameMap) : null),
+    [importText, nameMap],
+  );
 
   // Legends for the opponent dropdown — one per name (a legend can be reprinted
   // across sets), preferring the base (non-promo) printing's art.
@@ -158,6 +202,29 @@ export default function DeckBuilder({
     setDecks(prev => [deck, ...prev]);
     setActiveId(deck.id);
   }
+  function importDeck() {
+    const res = deckFromImport(importText, nameMap);
+    if (res.matchedCount === 0) return; // nothing recognized
+    const deck = {
+      ...newDeckObj(),
+      name: res.name || 'Imported Deck',
+      legendId: res.legendId,
+      championId: res.championId,
+      main: res.main,
+      sideboard: res.sideboard,
+      runes: res.runes,
+      log: [{ ts: Date.now(), cat: 'import', text: `Imported ${res.matchedCount} card${res.matchedCount !== 1 ? 's' : ''}${res.unknown.length ? ` · ${res.unknown.length} line${res.unknown.length !== 1 ? 's' : ''} unmatched` : ''}` }],
+    };
+    // No runes in the list but we know the legend? Seed from its domains.
+    if (sumQty(deck.runes) === 0 && deck.legendId) {
+      deck.runes = prepopulateRunes(legendDomains(cardById.get(deck.legendId)));
+    }
+    setDecks(prev => [deck, ...prev]);
+    setActiveId(deck.id);
+    setImportOpen(false);
+    setImportText('');
+  }
+
   function duplicateDeck(d) {
     const copy = { ...normalizeDeck(d, cardById), id: uid(), name: `${d.name} (copy)`, updatedAt: Date.now() };
     setDecks(prev => [copy, ...prev]);
@@ -187,7 +254,7 @@ export default function DeckBuilder({
       const text = next === 0 ? `Removed ${name} from ${zl}`
         : prev === 0 ? `Added ${name} to ${zl}`
         : `${name} ${prev}× → ${next}× (${zl})`;
-      return withLog(patch, text);
+      return withLog(patch, text, next > prev ? 'add' : 'remove');
     });
   }
 
@@ -202,7 +269,7 @@ export default function DeckBuilder({
       if (to === 'sideboard' && sumQty(dst) >= SIDEBOARD_MAX) return d;
       src[cardId] -= 1; if (src[cardId] <= 0) delete src[cardId];
       dst[cardId] = Math.min(cap, (dst[cardId] ?? 0) + 1);
-      return withLog({ ...d, [from]: src, [to]: dst }, `Moved ${name}: ${ZONE_LABEL[from]} → ${ZONE_LABEL[to]}`);
+      return withLog({ ...d, [from]: src, [to]: dst }, `Moved ${name}: ${ZONE_LABEL[from]} → ${ZONE_LABEL[to]}`, 'move');
     });
   }
 
@@ -223,18 +290,18 @@ export default function DeckBuilder({
       if (sumQty(d.runes) === 0) patch.runes = prepopulateRunes(legendDomains(card));
       const text = d.legendId
         ? `Changed legend → ${card.name}` : `Set legend: ${card.name}`;
-      return withLog(patch, text);
+      return withLog(patch, text, 'legend');
     });
   }
   function clearLegend() {
     mutate(active.id, d => d.legendId
-      ? withLog({ ...d, legendId: null }, `Removed legend: ${cardById.get(d.legendId)?.name ?? ''}`)
+      ? withLog({ ...d, legendId: null }, `Removed legend: ${cardById.get(d.legendId)?.name ?? ''}`, 'legend')
       : d);
   }
 
   function resetRunesFromLegend() {
     const legend = cardById.get(active.legendId);
-    mutate(active.id, d => withLog({ ...d, runes: prepopulateRunes(legendDomains(legend)) }, 'Reset runes from legend'));
+    mutate(active.id, d => withLog({ ...d, runes: prepopulateRunes(legendDomains(legend)) }, 'Reset runes from legend', 'rune'));
   }
   function adjustRune(domain, delta) {
     mutate(active.id, d => {
@@ -243,7 +310,7 @@ export default function DeckBuilder({
       const next = Math.max(0, prev + delta);
       if (next === prev) return d;
       if (next === 0) delete runes[domain]; else runes[domain] = next;
-      return withLog({ ...d, runes }, `${domain} runes ${prev} → ${next}`);
+      return withLog({ ...d, runes }, `${domain} runes ${prev} → ${next}`, 'rune');
     });
   }
 
@@ -252,7 +319,7 @@ export default function DeckBuilder({
       const id = cardId || null;
       if (d.championId === id) return d;
       const text = id ? `Chose champion: ${cardById.get(id)?.name ?? ''}` : 'Cleared chosen champion';
-      return withLog({ ...d, championId: id }, text);
+      return withLog({ ...d, championId: id }, text, 'champion');
     });
   }
   function setTag(cardId, label) {
@@ -262,12 +329,23 @@ export default function DeckBuilder({
       let text;
       if (!label || tags[cardId] === label) { delete tags[cardId]; text = `Untagged ${name}`; }
       else { tags[cardId] = label; text = `Tagged ${name}: ${label}`; }
-      return withLog({ ...d, tags }, text);
+      return withLog({ ...d, tags }, text, 'tag');
     });
   }
 
   function setNotes(value) {
-    mutate(active.id, d => ({ ...d, notes: value })); // notes edits aren't logged
+    mutate(active.id, d => ({ ...d, notes: value })); // draft edits aren't logged
+  }
+  // Commit the notes draft as a timestamped entry in the running note log.
+  function addNote() {
+    mutate(active.id, d => {
+      const text = (d.notes ?? '').trim();
+      if (!text) return d;
+      return { ...d, notes: '', noteLog: [...(d.noteLog ?? []), { id: uid(), ts: Date.now(), text }] };
+    });
+  }
+  function deleteNote(id) {
+    mutate(active.id, d => ({ ...d, noteLog: (d.noteLog ?? []).filter(n => n.id !== id) }));
   }
   function clearLog() {
     mutate(active.id, d => ({ ...d, log: [] }));
@@ -563,7 +641,49 @@ export default function DeckBuilder({
     <div className="db-wrap">
       {/* ── Deck list sidebar ── */}
       <aside className="db-sidebar">
-        <button className="btn primary db-new" onClick={createDeck}>+ New deck</button>
+        <div className="db-new-row">
+          <button className="btn primary db-new" onClick={createDeck}>+ New deck</button>
+          <button
+            className={`btn db-import-toggle${importOpen ? ' active' : ''}`}
+            onClick={() => setImportOpen(o => !o)}
+            title="Import a decklist from text"
+          >
+            ⤓ Import
+          </button>
+        </div>
+
+        {importOpen && (
+          <div className="db-import">
+            <textarea
+              className="deck-textarea db-import-text"
+              value={importText}
+              onChange={e => setImportText(e.target.value)}
+              placeholder={IMPORT_PLACEHOLDER}
+              spellCheck={false}
+            />
+            {importPreview && (
+              <div className="db-import-report">
+                <span className="db-import-ok">{importPreview.matchedCount} matched</span>
+                {importPreview.unknown.length > 0 && (
+                  <span className="db-import-miss" title={importPreview.unknown.map(u => `${u.quantity} ${u.name}`).join('\n')}>
+                    {importPreview.unknown.length} unmatched
+                  </span>
+                )}
+              </div>
+            )}
+            <div className="deck-btns">
+              <button
+                className="btn primary"
+                onClick={importDeck}
+                disabled={!importPreview || importPreview.matchedCount === 0}
+              >
+                Import as new deck
+              </button>
+              <button className="btn ghost" onClick={() => { setImportText(''); setImportOpen(false); }}>Cancel</button>
+            </div>
+          </div>
+        )}
+
         <div className="db-deck-list">
           {decks.length === 0 && <div className="db-empty">No decks yet.</div>}
           {decks.map(d => {
@@ -811,32 +931,106 @@ export default function DeckBuilder({
               </div>
             ))}
 
-            {/* Notes */}
-            {renderSection('Notes', null, null, (
-              <textarea
-                className="db-notes"
-                value={active.notes}
-                onChange={e => setNotes(e.target.value)}
-                placeholder="Deck notes — strategy, matchups, swaps to try, sideboard plan…"
-                spellCheck={false}
-              />
-            ))}
-
-            {/* Change Log */}
-            {renderSection('Change Log', active.log.length || null, null, (
-              active.log.length ? (
-                <div className="db-log">
-                  <div className="db-log-list">
-                    {[...active.log].reverse().map((e, i) => (
-                      <div key={active.log.length - i} className="db-log-row">
-                        <span className="db-log-time">{fmtLogTime(e.ts)}</span>
-                        <span className="db-log-text">{e.text}</span>
+            {/* Notes — composer + timestamped running log */}
+            {renderSection('Notes', active.noteLog.length || null, null, (
+              <div className="db-notes-wrap">
+                <textarea
+                  className="db-notes"
+                  value={active.notes}
+                  onChange={e => setNotes(e.target.value)}
+                  onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); addNote(); } }}
+                  placeholder="Write a note — strategy, matchups, swaps to try, sideboard plan… (Ctrl+Enter to log)"
+                  spellCheck={false}
+                />
+                <div className="deck-btns">
+                  <button className="btn primary" onClick={addNote} disabled={!active.notes.trim()}>Add note</button>
+                </div>
+                {active.noteLog.length > 0 && (
+                  <div className="db-note-list">
+                    {[...active.noteLog].reverse().map(n => (
+                      <div key={n.id} className="db-note-row">
+                        <span className="db-log-time">{fmtLogTime(n.ts)}</span>
+                        <span className="db-note-text">{n.text}</span>
+                        <button className="db-match-del" onClick={() => deleteNote(n.id)} title="Delete note">×</button>
                       </div>
                     ))}
                   </div>
-                  <button className="btn ghost" onClick={clearLog}>Clear log</button>
-                </div>
-              ) : <div className="db-zone-empty">No changes yet — edits to this deck get logged here automatically.</div>
+                )}
+              </div>
+            ))}
+
+            {/* Change Log — categorized activities with column filters */}
+            {renderSection('Change Log', active.log.length || null, null, (
+              active.log.length ? (() => {
+                const present = LOG_CAT_ORDER.filter(c => active.log.some(e => (e.cat ?? 'other') === c));
+                const shown = logCats.length
+                  ? active.log.filter(e => logCats.includes(e.cat ?? 'other'))
+                  : active.log;
+                return (
+                  <div className="db-log">
+                    <div className="db-log-filters">
+                      {present.map(c => {
+                        const on = logCats.includes(c);
+                        const color = LOG_CATS[c].color;
+                        return (
+                          <button
+                            key={c}
+                            className={`db-log-chip${on ? ' active' : ''}`}
+                            style={{
+                              color,
+                              borderColor: on ? color : 'transparent',
+                              background: `color-mix(in oklch, ${color} ${on ? 24 : 12}%, transparent)`,
+                            }}
+                            onClick={() => toggleLogCat(c)}
+                          >
+                            <span className="db-log-dot" style={{ background: color }} />
+                            {LOG_CATS[c].label}
+                          </button>
+                        );
+                      })}
+                      {logCats.length > 0 && (
+                        <button className="db-log-chip clear" onClick={() => setLogCats([])}>Clear filter</button>
+                      )}
+                    </div>
+                    <div className="db-log-list">
+                      <div className="db-log-row head">
+                        <span>Time</span>
+                        <span>Activity</span>
+                        <span>Detail</span>
+                      </div>
+                      {shown.length === 0 ? (
+                        <div className="db-log-none">No entries match this filter.</div>
+                      ) : [...shown].reverse().map((e, i) => {
+                        const cat = e.cat ?? 'other';
+                        const color = LOG_CATS[cat].color;
+                        return (
+                          <div
+                            key={shown.length - i}
+                            className="db-log-row"
+                            style={{
+                              boxShadow: `inset 3px 0 0 ${color}`,
+                              background: `color-mix(in oklch, ${color} 7%, transparent)`,
+                            }}
+                          >
+                            <span className="db-log-time">{fmtLogTime(e.ts)}</span>
+                            <span className="db-log-cat" style={{ color, background: `color-mix(in oklch, ${color} 22%, transparent)`, borderColor: `color-mix(in oklch, ${color} 40%, transparent)` }}>
+                              <span className="db-log-dot" style={{ background: color }} />
+                              {LOG_CATS[cat].label}
+                            </span>
+                            <span className="db-log-text">{e.text}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="db-log-foot">
+                      <span className="db-log-shown">
+                        {logCats.length ? `${shown.length} of ${active.log.length}` : `${active.log.length} entr${active.log.length !== 1 ? 'ies' : 'y'}`}
+                      </span>
+                      <button className="btn ghost" onClick={clearLog}>Clear log</button>
+                    </div>
+                  </div>
+                );
+              })() : <div className="db-zone-empty">No changes yet — edits to this deck get logged here automatically.</div>
             ))}
           </div>
         </div>

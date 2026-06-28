@@ -20,6 +20,8 @@ ipcMain.handle('fetch-image', async (_e, url) => {
   }
 });
 
+let mainWindow = null;
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1440,
@@ -59,22 +61,55 @@ function createWindow() {
     win.loadFile(path.join(__dirname, '../dist/index.html'));
     win.setMenuBarVisibility(false);
   }
+
+  mainWindow = win;
+  win.on('closed', () => { if (mainWindow === win) mainWindow = null; });
 }
 
-// Check GitHub Releases for a newer version and download/notify in the
-// background. Only runs in the packaged app (electron-updater needs the
-// built app-update.yml and a real version to compare against).
+// Check GitHub Releases for a newer version, download it in the background, and
+// stream status to the renderer so it can show an in-app update toast. Only the
+// packaged app actually updates (electron-updater needs the built app-update.yml
+// and a real version to compare against), but the IPC handlers are always
+// registered so the renderer can call them without rejecting.
 function initAutoUpdate() {
-  if (isDev) return;
-  let autoUpdater;
-  try {
-    ({ autoUpdater } = require('electron-updater'));
-  } catch {
-    return; // dependency not installed — skip silently
+  let autoUpdater = null;
+  if (!isDev) {
+    try {
+      ({ autoUpdater } = require('electron-updater'));
+    } catch {
+      autoUpdater = null; // dependency missing — degrade gracefully
+    }
   }
+
+  const sendStatus = (payload) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update:status', payload);
+    }
+  };
+
+  // Manual "check for updates" from the renderer. Returns false when updates
+  // aren't available in this context (dev / unpackaged).
+  ipcMain.handle('update:check', async () => {
+    if (!autoUpdater) return false;
+    try { await autoUpdater.checkForUpdates(); return true; }
+    catch (err) { sendStatus({ state: 'error', message: String(err?.message ?? err) }); return false; }
+  });
+  // Quit and install a downloaded update right now.
+  ipcMain.handle('update:install', () => { if (autoUpdater) autoUpdater.quitAndInstall(); });
+
+  if (!autoUpdater) return;
+
   autoUpdater.autoDownload = true;
-  autoUpdater.on('error', (err) => console.error('[updater]', err?.message ?? err));
-  autoUpdater.checkForUpdatesAndNotify().catch((err) =>
+  autoUpdater.autoInstallOnAppQuit = true; // install on quit if not restarted sooner
+
+  autoUpdater.on('checking-for-update', () => sendStatus({ state: 'checking' }));
+  autoUpdater.on('update-available', (info) => sendStatus({ state: 'downloading', version: info?.version, percent: 0 }));
+  autoUpdater.on('update-not-available', () => sendStatus({ state: 'none' }));
+  autoUpdater.on('download-progress', (p) => sendStatus({ state: 'downloading', percent: Math.round(p?.percent ?? 0) }));
+  autoUpdater.on('update-downloaded', (info) => sendStatus({ state: 'ready', version: info?.version }));
+  autoUpdater.on('error', (err) => sendStatus({ state: 'error', message: String(err?.message ?? err) }));
+
+  autoUpdater.checkForUpdates().catch((err) =>
     console.error('[updater] check failed:', err?.message ?? err)
   );
 }

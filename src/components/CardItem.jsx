@@ -50,6 +50,9 @@ export default function CardItem({
   const target = playsetTarget(card);
 
   const effectiveCount = alwaysFoil ? foilCount : count + foilCount;
+  // A complete foil playset on a card that also has a non-foil printing —
+  // always-foil cards already surface their foils as the main playset.
+  const foilPlayset = !alwaysFoil && !singleton && foilCount >= target;
 
   let status;
   if (singleton) {
@@ -68,15 +71,25 @@ export default function CardItem({
   const isLF = !!lookingFor[card.id];
   const isUFT = !!upForTrade[card.id];
 
-  let statusLabel;
+  // Bottom status chips — a card can show both a "Playset" and a "Foiled
+  // Playset" chip when you've completed both.
+  const statusChips = [];
   if (singleton) {
-    statusLabel = count > 0 ? 'Owned' : 'Missing';
-  } else if (status === 'playset') {
-    statusLabel = `Playset${effectiveCount > target ? ` +${effectiveCount - target}` : ''}`;
-  } else if (status === 'missing') {
-    statusLabel = 'Missing';
+    statusChips.push(count > 0
+      ? { text: 'Owned', tone: 'playset' }
+      : { text: 'Missing', tone: 'missing' });
   } else {
-    statusLabel = `${alwaysFoil ? foilCount : count + foilCount}/${target}`;
+    if (effectiveCount >= target) {
+      statusChips.push({ text: `Playset${effectiveCount > target ? ` +${effectiveCount - target}` : ''}`, tone: 'playset' });
+    }
+    if (foilPlayset) {
+      statusChips.push({ text: `Foiled Playset${foilCount > target ? ` +${foilCount - target}` : ''}`, tone: 'foil' });
+    }
+    if (statusChips.length === 0) {
+      statusChips.push(effectiveCount > 0
+        ? { text: `${effectiveCount}/${target}`, tone: 'incomplete' }
+        : { text: 'Missing', tone: 'missing' });
+    }
   }
 
   return (
@@ -90,6 +103,11 @@ export default function CardItem({
         {isAlt && <span className="alt-badge">ALT</span>}
         {printingLabel && <span className="printing-badge">{printingLabel}</span>}
         {singleton && <span className="singleton-marker">×1</span>}
+        {foilPlayset && (
+          <span className="foil-playset-marker" title={`Foil playset complete (${foilCount} foils)`}>
+            ✦ {foilCount > target ? `${target}+` : target}
+          </span>
+        )}
       </button>
 
       <div className="card-body">
@@ -141,10 +159,6 @@ export default function CardItem({
                 <span className="foil-lbl">✦</span>
               </label>
             )}
-            <div className="card-actions-trail">
-              <TagBtn label="LF" active={isLF} variant="lf" onClick={() => onToggleLF?.(card.id)} />
-              <TagBtn label="UFT" active={isUFT} variant="uft" onClick={() => onToggleUFT?.(card.id)} />
-            </div>
           </div>
         ) : (
           <div className="card-row counter-row">
@@ -152,12 +166,14 @@ export default function CardItem({
               <Stepper count={count} onDec={() => onAdjust(card.id, -1)} onInc={() => onAdjust(card.id, 1)} />
             )}
             <Stepper count={foilCount} onDec={() => onAdjustFoil(card.id, -1)} onInc={() => onAdjustFoil(card.id, 1)} variant="foil" />
-            <div className="card-actions-trail">
-              <TagBtn label="LF" active={isLF} variant="lf" onClick={() => onToggleLF?.(card.id)} />
-              <TagBtn label="UFT" active={isUFT} variant="uft" onClick={() => onToggleUFT?.(card.id)} />
-            </div>
           </div>
         )}
+
+        {/* Trade flags — own row so they scale cleanly */}
+        <div className="card-trade-row">
+          <TagBtn label="LF" active={isLF} variant="lf" onClick={() => onToggleLF?.(card.id)} />
+          <TagBtn label="UFT" active={isUFT} variant="uft" onClick={() => onToggleUFT?.(card.id)} />
+        </div>
 
         {/* Promo fold-ins (only for base cards, not alts) */}
         {promos.length > 0 && !isAlt && promos.map(({ card: promo, count: pc, foilCount: pfc, label: pl }) => {
@@ -179,8 +195,12 @@ export default function CardItem({
         })}
 
         <div className="card-status-row">
-          <span className="status-pip"></span>
-          <span className="status-text">{statusLabel}</span>
+          {statusChips.map((chip, i) => (
+            <span key={i} className={`status-chip tone-${chip.tone}`}>
+              <span className="status-pip"></span>
+              <span className="status-text">{chip.text}</span>
+            </span>
+          ))}
         </div>
       </div>
     </article>
