@@ -6,7 +6,7 @@ import { groupWithAlts } from '../utils/cardGroups';
 // name, so without this section they have nowhere to be tracked.
 const PROMO_SET_ORDER = ['OPP', 'JDG', 'PR', 'RWB'];
 const PROMO_SET_LABELS = {
-  OPP: 'Nexus Night Promos', JDG: 'Judge Promos',
+  OPP: 'Organized Play Promos', JDG: 'Judge Promos',
   PR: 'Promotional Cards', RWB: 'Worlds Bundle 2025',
 };
 

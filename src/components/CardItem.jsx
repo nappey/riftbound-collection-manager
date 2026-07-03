@@ -14,7 +14,7 @@ const Minus = () => (
 function fmt(n) { return '$' + (Number(n) || 0).toFixed(2); }
 
 const PROMO_ABBREV = {
-  'Nexus Night': 'NN',
+  'OP Promo': 'OP',
   'Promo': 'PR',
   'Judge': 'JDG',
   'Worlds': 'WB',

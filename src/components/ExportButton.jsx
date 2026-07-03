@@ -1,9 +1,9 @@
 const SET_DISPLAY = {
   OGN: 'Origins',
-  OGS: 'Skirmish',
+  OGS: 'Proving Grounds',
   SFD: 'Spiritforged',
   UNL: 'Unleashed',
-  OPP: 'Nexus Night Promos',
+  OPP: 'Organized Play Promos',
   PR:  'Promotional Cards',
   JDG: 'Judge Promos',
   RWB: 'Worlds Bundle 2025',

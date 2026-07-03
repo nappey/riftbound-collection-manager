@@ -39,8 +39,8 @@ const RARITY_ORDER = { common: 0, uncommon: 1, rare: 2, showcase: 3 };
 
 const SET_LABELS = {
   OGN: 'Origins',
-  OGS: 'Skirmish',
-  OPP: 'Nexus Night Promos',
+  OGS: 'Proving Grounds',
+  OPP: 'Organized Play Promos',
   SFD: 'Spiritforged',
   UNL: 'Unleashed',
   PR:  'Promotional Cards',
@@ -51,7 +51,7 @@ const SET_LABELS = {
 const PROMO_SETS = new Set(['OGS', 'OPP', 'PR', 'JDG', 'RWB']);
 const PROMO_FOLD_SETS = new Set(['OPP', 'PR', 'JDG', 'RWB']);
 const PROMO_SHORT_LABELS = {
-  OPP: 'Nexus Night', PR: 'Promo', JDG: 'Judge', RWB: 'Worlds',
+  OPP: 'OP Promo', PR: 'Promo', JDG: 'Judge', RWB: 'Worlds',
 };
 
 async function fetchAllCards() {

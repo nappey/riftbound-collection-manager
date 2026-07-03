@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { isAlwaysFoil, isSingleton, isBattlefield } from '../utils/playset';
 
 const SET_LABELS = {
-  OGN: 'Origins', OGS: 'Skirmish', SFD: 'Spiritforged', UNL: 'Unleashed',
-  OPP: 'Nexus Night Promos', PR: 'Promotional Cards', JDG: 'Judge Promos', RWB: 'Worlds Bundle 2025',
+  OGN: 'Origins', OGS: 'Proving Grounds', SFD: 'Spiritforged', UNL: 'Unleashed',
+  OPP: 'Organized Play Promos', PR: 'Promotional Cards', JDG: 'Judge Promos', RWB: 'Worlds Bundle 2025',
 };
 
 const Sparkle = () => (

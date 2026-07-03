@@ -2,7 +2,7 @@ import CardItem from './CardItem';
 
 // Short label shown on each rune printing so the different arts are obvious.
 const PRINTING_SHORT = {
-  OPP: 'Nexus Night', OPR: 'OP Promo', OGN: 'Origins', OGS: 'Skirmish', SFD: 'Spiritforged',
+  OPP: 'OP Promo', OPR: 'OP Promo', OGN: 'Origins', OGS: 'Proving Grounds', SFD: 'Spiritforged',
   UNL: 'Unleashed', PR: 'Promo', JDG: 'Judge', RWB: 'Worlds',
 };
 function printingLabel(card) {
