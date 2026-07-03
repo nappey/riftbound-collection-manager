@@ -30,7 +30,10 @@ const IS_ELECTRON = typeof window !== 'undefined' && window.__electron__?.isElec
 const TCGCSV_BASE = IS_ELECTRON
   ? 'https://tcgcsv.com/tcgplayer/89'
   : '/tcgcsv/tcgplayer/89';
-const RIFTBOUND_GROUP_IDS = [24344, 24439, 24502, 24519, 24528, 24552, 24560, 24343];
+// Fallback TCGplayer group IDs (Riftbound = category 89) used only if runtime
+// group discovery fails — normally the full set list is fetched from tcgcsv so
+// new sets get prices automatically.
+const FALLBACK_GROUP_IDS = [24344, 24439, 24502, 24519, 24528, 24552, 24560, 24343];
 
 const RARITY_ORDER = { common: 0, uncommon: 1, rare: 2, showcase: 3 };
 
@@ -64,9 +67,27 @@ async function fetchAllCards() {
   return [first, ...rest].flatMap((d) => d.items);
 }
 
+// Discover every Riftbound set's TCGplayer group ID at runtime so a brand-new
+// set gets prices with no code change. Falls back to the known list if the
+// groups endpoint is unavailable.
+async function fetchGroupIds() {
+  try {
+    const res = await fetch(`${TCGCSV_BASE}/groups`).then((r) => {
+      if (!r.ok) throw new Error(`groups ${r.status}`);
+      return r.json();
+    });
+    const ids = (res.results ?? []).map((g) => g.groupId).filter((id) => id != null);
+    if (ids.length) return ids;
+  } catch (e) {
+    console.warn('[prices] group discovery failed, using fallback list:', e?.message ?? e);
+  }
+  return FALLBACK_GROUP_IDS;
+}
+
 async function fetchAllPrices() {
+  const groupIds = await fetchGroupIds();
   const responses = await Promise.allSettled(
-    RIFTBOUND_GROUP_IDS.map((gid) =>
+    groupIds.map((gid) =>
       fetch(`${TCGCSV_BASE}/${gid}/prices`).then((r) => r.json())
     )
   );
