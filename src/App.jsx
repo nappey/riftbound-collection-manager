@@ -8,6 +8,7 @@ import ExportButton from './components/ExportButton';
 import CardModal from './components/CardModal';
 import UpdateToast from './components/UpdateToast';
 import CheckForUpdatesButton from './components/CheckForUpdatesButton';
+import SetPicker from './components/SetPicker';
 import Decks from './pages/Decks';
 import Export from './pages/Export';
 import SetEntry from './pages/SetEntry';
@@ -419,6 +420,19 @@ export default function App() {
     : setIds.includes(activeSetId) ? activeSetId
     : (setIds[0] ?? null);
 
+  // Entries for the set-picker dropdown: real sets first, then Rune Box / Promos.
+  const statOf = (id) => setTabStats[id] ?? { owned: 0, total: 0, pct: 0 };
+  const setPickerEntries = [
+    ...setIds.map(sid => ({
+      id: sid,
+      label: cardsBySet[sid].label,
+      kind: cardsBySet[sid].promo ? 'promoSet' : 'set',
+      ...statOf(sid),
+    })),
+    { id: 'runes', label: 'Rune Box', kind: 'runes', ...statOf('runes') },
+    { id: 'promos', label: 'Promos', kind: 'promos', ...statOf('promos') },
+  ];
+
   // Active filter chips
   const activeChips = [];
   if (filters.type) activeChips.push({ k: 'type', label: filters.type, clear: () => setFilters(f => ({...f, type: ''})) });
@@ -596,44 +610,13 @@ export default function App() {
             />
           ) : (
             <>
-              {/* Set tabs */}
-              <div className="set-tabs-row">
-                <button
-                  className={`set-tab runes-tab${currentSetId === 'runes' ? ' set-tab--active' : ''}`}
-                  onClick={() => setActiveSetId('runes')}
-                >
-                  <span className="set-tab-name">Rune Box</span>
-                  <span className="set-tab-meta">
-                    <span className="set-tab-pct">{setTabStats['runes']?.pct ?? 0}%</span>
-                    <span className="set-tab-count">{setTabStats['runes']?.owned ?? 0}/{setTabStats['runes']?.total ?? 0}</span>
-                  </span>
-                </button>
-                <button
-                  className={`set-tab promo-tab${currentSetId === 'promos' ? ' set-tab--active' : ''}`}
-                  onClick={() => setActiveSetId('promos')}
-                >
-                  <span className="set-tab-name">Promos</span>
-                  <span className="set-tab-meta">
-                    <span className="set-tab-pct">{setTabStats['promos']?.pct ?? 0}%</span>
-                    <span className="set-tab-count">{setTabStats['promos']?.owned ?? 0}/{setTabStats['promos']?.total ?? 0}</span>
-                  </span>
-                </button>
-                {setIds.map(sid => {
-                  const sc = setTabStats[sid] ?? { total: 0, owned: 0, pct: 0 };
-                  return (
-                    <button
-                      key={sid}
-                      className={`set-tab${currentSetId === sid ? ' set-tab--active' : ''}${cardsBySet[sid].promo ? ' promo-tab' : ''}`}
-                      onClick={() => setActiveSetId(sid)}
-                    >
-                      <span className="set-tab-name">{cardsBySet[sid].label}</span>
-                      <span className="set-tab-meta">
-                        <span className="set-tab-pct">{sc.pct}%</span>
-                        <span className="set-tab-count">{sc.owned}/{sc.total}</span>
-                      </span>
-                    </button>
-                  );
-                })}
+              {/* Set picker — scalable dropdown replacing the old tab strip */}
+              <div className="set-picker-row">
+                <SetPicker
+                  entries={setPickerEntries}
+                  currentId={currentSetId}
+                  onSelect={setActiveSetId}
+                />
               </div>
 
               {/* Set progress */}
