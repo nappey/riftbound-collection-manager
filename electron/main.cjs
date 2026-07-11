@@ -102,6 +102,29 @@ function initAutoUpdate() {
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true; // install on quit if not restarted sooner
 
+  // ── Update security hardening ──────────────────────────────────
+  // electron-updater downloads `latest.yml` over HTTPS from the GitHub repo and
+  // verifies the installer's SHA-512 against that manifest BEFORE it will run
+  // the installer. A corrupted or tampered download fails that check and is
+  // discarded rather than executed — that integrity check is the primary
+  // defense and is on by default. We reinforce it:
+  //   • Pin the feed to the exact official repo over HTTPS, so the update source
+  //     can't be silently redirected elsewhere. (Must match build.publish.)
+  //   • Refuse downgrades and prereleases, so an older/vulnerable or unfinished
+  //     build can't be served as an "update".
+  try {
+    autoUpdater.setFeedURL({
+      provider: 'github',
+      owner: 'nappey',
+      repo: 'riftbound-collection-manager',
+      protocol: 'https',
+    });
+  } catch (err) {
+    console.error('[updater] could not pin feed URL:', err?.message ?? err);
+  }
+  autoUpdater.allowDowngrade = false;
+  autoUpdater.allowPrerelease = false;
+
   autoUpdater.on('checking-for-update', () => sendStatus({ state: 'checking' }));
   autoUpdater.on('update-available', (info) => sendStatus({ state: 'downloading', version: info?.version, percent: 0 }));
   autoUpdater.on('update-not-available', () => sendStatus({ state: 'none' }));

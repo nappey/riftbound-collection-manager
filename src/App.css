@@ -449,10 +449,35 @@
 }
 .set-progress-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 12px;
-  flex-wrap: wrap;
+  min-width: 0;
 }
+.set-progress-headings {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.set-cover {
+  flex-shrink: 0;
+  width: 46px;
+  height: 64px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border-1);
+  background: var(--bg-0);
+  padding: 0;
+  cursor: pointer;
+  box-shadow: 0 2px 8px oklch(0 0 0 / 0.35);
+  transition: transform .12s ease, border-color .12s ease, box-shadow .12s ease;
+}
+.set-cover:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent);
+  box-shadow: 0 4px 14px oklch(0.72 0.15 282 / 0.3);
+}
+.set-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .set-progress-title {
   margin: 0;
   font-size: 15px;

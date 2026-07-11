@@ -170,6 +170,19 @@ function groupBySet(cards) {
   }, {});
 }
 
+// Pick a representative card to act as a set's "cover" art — prefer a Legend,
+// then a Champion, else the lowest collector number. Alt-art printings are
+// skipped so the cover shows the standard look. (No API exposes set logos, so
+// a signature card from the set stands in as its visual identity.)
+function pickSetArt(cards) {
+  const withImg = cards.filter(c => c.media?.image_url && !c.metadata?.alternate_art);
+  const pool = withImg.length ? withImg : cards.filter(c => c.media?.image_url);
+  if (!pool.length) return null;
+  return pool.find(c => c.classification?.type === 'Legend')
+      ?? pool.find(c => c.classification?.supertype === 'Champion')
+      ?? [...pool].sort((a, b) => (a.collector_number ?? 9999) - (b.collector_number ?? 9999))[0];
+}
+
 function totalCollectionValue(cards, collection, foilCollection, prices) {
   return cards.reduce((sum, card) => {
     const p = prices[card.tcgplayer_id] ?? {};
@@ -461,6 +474,7 @@ export default function App() {
     }, 0) : null;
     setProgressStats = {
       name: cardsBySet[currentSetId]?.label ?? currentSetId,
+      art: pickSetArt(allSetCards),
       playsets, partial, missing,
       total: allSetCards.length,
       value: setValue,
@@ -623,10 +637,21 @@ export default function App() {
               {setProgressStats && (
                 <div className="set-progress">
                   <div className="set-progress-head">
-                    <h2 className="set-progress-title">{setProgressStats.name}</h2>
-                    <span className="set-progress-sub">
-                      {setProgressStats.playsets} playsets · {setProgressStats.partial} in progress · {setProgressStats.missing} missing
-                    </span>
+                    {setProgressStats.art && (
+                      <button
+                        className="set-cover"
+                        onClick={() => setModalCard(setProgressStats.art)}
+                        title={`${setProgressStats.name} — ${setProgressStats.art.name}`}
+                      >
+                        <img src={setProgressStats.art.media.image_url} alt="" loading="lazy" />
+                      </button>
+                    )}
+                    <div className="set-progress-headings">
+                      <h2 className="set-progress-title">{setProgressStats.name}</h2>
+                      <span className="set-progress-sub">
+                        {setProgressStats.playsets} playsets · {setProgressStats.partial} in progress · {setProgressStats.missing} missing
+                      </span>
+                    </div>
                   </div>
                   <div className="progress-legend">
                     <span className="legend-item"><span className="legend-swatch" style={{background: 'var(--accent)'}}></span> Playset</span>
