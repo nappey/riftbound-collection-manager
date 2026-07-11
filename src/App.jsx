@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import SetSection from './components/SetSection';
 import RuneBox from './components/RuneBox';
 import PromoBox from './components/PromoBox';
@@ -278,6 +278,14 @@ export default function App() {
   const [sort, setSort] = useState(DEFAULT_SORT);
   const [modalCard, setModalCard] = useState(null);
   const [tab, setTab] = useState('collection');
+  // Signal to the deck builder to create + open a new deck seeded with a Legend.
+  const [newDeckLegend, setNewDeckLegend] = useState(null);
+  const startDeckWithLegend = useCallback((card) => {
+    setNewDeckLegend(card);
+    setModalCard(null);
+    setTab('decks');
+  }, []);
+  const consumeNewDeckLegend = useCallback(() => setNewDeckLegend(null), []);
   const [activeSetId, setActiveSetId] = useState(null);
   const [view, setView] = useState('grid');
   const [loading, setLoading] = useState(true);
@@ -578,6 +586,8 @@ export default function App() {
               decks={decks}
               setDecks={setDecks}
               onOpenModal={setModalCard}
+              newDeckLegend={newDeckLegend}
+              onNewDeckConsumed={consumeNewDeckLegend}
             />
           ) : tab === 'shopping' ? (
             <Shopping
@@ -777,6 +787,7 @@ export default function App() {
         price={modalCard ? prices[modalCard.tcgplayer_id] ?? null : null}
         pricesLoading={pricesLoading}
         onClose={() => setModalCard(null)}
+        onStartDeck={startDeckWithLegend}
       />
 
       <UpdateToast />

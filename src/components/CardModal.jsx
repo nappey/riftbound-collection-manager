@@ -8,7 +8,7 @@ const RARITY_CLASS = {
   showcase: 'showcase',
 };
 
-export default function CardModal({ card, price, pricesLoading, onClose }) {
+export default function CardModal({ card, price, pricesLoading, onClose, onStartDeck }) {
   useEffect(() => {
     if (!card) return;
     function onKey(e) { if (e.key === 'Escape') onClose(); }
@@ -20,6 +20,7 @@ export default function CardModal({ card, price, pricesLoading, onClose }) {
 
   const imgSrc = card.media?.image_url ?? null;
   const rarity = (card.classification?.rarity ?? '').toLowerCase();
+  const isLegend = card.classification?.type === 'Legend';
   const type = [card.classification?.supertype, card.classification?.type].filter(Boolean).join(' ');
   const domains = card.classification?.domain ?? [];
   const attrs = card.attributes ?? {};
@@ -60,6 +61,12 @@ export default function CardModal({ card, price, pricesLoading, onClose }) {
               </span>
             </div>
           </div>
+
+          {isLegend && onStartDeck && (
+            <button className="btn primary modal-start-deck" onClick={() => onStartDeck(card)}>
+              + Start a new deck with this Legend
+            </button>
+          )}
 
           <div className="modal-stats">
             {attrs.energy != null && (

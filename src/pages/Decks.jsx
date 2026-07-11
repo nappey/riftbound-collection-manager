@@ -6,7 +6,7 @@ import DeckCheck from './DeckCheck';
 // against your collection. Toggled by a segmented control up top.
 export default function Decks({
   allCards, collection, foilCollection, prices, pricesLoading,
-  decks, setDecks, onOpenModal,
+  decks, setDecks, onOpenModal, newDeckLegend, onNewDeckConsumed,
 }) {
   const [mode, setMode] = useState('builder'); // 'builder' | 'check'
 
@@ -29,6 +29,8 @@ export default function Decks({
           decks={decks}
           setDecks={setDecks}
           onOpenModal={onOpenModal}
+          newDeckLegend={newDeckLegend}
+          onNewDeckConsumed={onNewDeckConsumed}
         />
       ) : (
         <DeckCheck allCards={allCards} collection={collection} />

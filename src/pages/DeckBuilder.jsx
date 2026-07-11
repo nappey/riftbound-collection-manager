@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { isSingleton, isAlwaysFoil } from '../utils/playset';
 import { ownedTotal, unitPrice, fmt$, PROMO_FOLD_SETS } from '../utils/analysis';
 import { exportDeckImage } from '../utils/deckImage';
@@ -29,6 +29,27 @@ Sideboard:
 const MAIN_TARGET = 40;
 const SIDEBOARD_MAX = 8;
 const RUNE_TARGET = 12;
+const OPENING_HAND = 4; // Riftbound opening hand size
+
+// Hypergeometric: chance of drawing at least one of `copies` in an opening hand
+// of `hand` cards from a main deck of `deckSize`. Uses the product form of
+// P(none) for numerical stability.
+function drawChance(copies, deckSize, hand) {
+  const N = deckSize;
+  const k = copies;
+  const n = Math.min(hand, N);
+  if (k <= 0 || N <= 0) return 0;
+  if (N - k < n) return 1; // too few other cards to avoid it
+  let pNone = 1;
+  for (let i = 0; i < n; i++) pNone *= (N - k - i) / (N - i);
+  return 1 - pNone;
+}
+
+function fmtPct(p) {
+  const pct = p * 100;
+  if (pct > 0 && pct < 1) return '<1%';
+  return `${Math.round(pct)}%`;
+}
 
 const ELEMENTAL_DOMAINS = ['Body', 'Calm', 'Chaos', 'Fury', 'Mind', 'Order'];
 const TAGS = ['core', 'amazing', 'flex', 'bad'];
@@ -136,7 +157,7 @@ function normalizeDeck(deck, cardById) {
 
 export default function DeckBuilder({
   allCards, collection, foilCollection, prices, pricesLoading,
-  decks, setDecks, onOpenModal,
+  decks, setDecks, onOpenModal, newDeckLegend, onNewDeckConsumed,
 }) {
   const [activeId, setActiveId] = useState(() => decks[0]?.id ?? null);
   const [search, setSearch] = useState('');
@@ -153,6 +174,28 @@ export default function DeckBuilder({
   const [importText, setImportText] = useState('');
   const [logCats, setLogCats] = useState([]); // active change-log filters ([] = all)
   const toggleLogCat = (c) => setLogCats(prev => prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c]);
+
+  // Create-and-open a new deck seeded with a Legend, triggered from a Legend
+  // card's "Start a new deck" button. Flag-guarded so StrictMode's double effect
+  // invocation (dev) can't create two decks; the flag resets when the signal clears.
+  const startedRef = useRef(false);
+  useEffect(() => {
+    if (!newDeckLegend) { startedRef.current = false; return; }
+    if (startedRef.current) return;
+    startedRef.current = true;
+    const legend = newDeckLegend;
+    const domains = legendDomains(legend);
+    const deck = {
+      ...newDeckObj(),
+      name: legend.name,
+      legendId: legend.id,
+      runes: domains.length ? prepopulateRunes(domains) : {},
+      log: [{ ts: Date.now(), cat: 'legend', text: `Set legend: ${legend.name}` }],
+    };
+    setDecks(prev => [deck, ...prev]);
+    setActiveId(deck.id);
+    onNewDeckConsumed?.();
+  }, [newDeckLegend, setDecks, onNewDeckConsumed]);
 
   const cardById = useMemo(() => {
     const m = new Map();
@@ -531,6 +574,10 @@ export default function DeckBuilder({
     const short = Math.max(0, qty - (row.owned ?? ownedTotal(card, collection, foilCollection)));
     const chosen = active.championId === card.id;
     const tag = active.tags[card.id];
+    // Opening-hand draw odds only apply to cards drawn from the main deck
+    // (battlefields and runes are separate zones).
+    const drawable = zone === 'main' && card.classification?.type !== 'Battlefield' && analysis.mainCount > 0;
+    const drawPct = drawable ? drawChance(qty, analysis.mainCount, OPENING_HAND) : null;
     return (
       <div key={card.id} className={`db-tile${short > 0 ? ' short' : ''}${chosen ? ' chosen' : ''}`}>
         <button className="db-tile-art" onClick={() => onOpenModal?.(card)} title="View details">
@@ -538,6 +585,11 @@ export default function DeckBuilder({
             ? <img src={card.media.image_url} alt={card.name} loading="lazy" />
             : <span className="db-tile-ph">{card.name}</span>}
           <span className="db-tile-qty">{qty}×{isAlwaysFoil(card) && <span className="db-foil">✦</span>}</span>
+          {drawPct != null && (
+            <span className="db-tile-draw" title={`${fmtPct(drawPct)} chance to be in your ${OPENING_HAND}-card opening hand (main deck of ${analysis.mainCount})`}>
+              {fmtPct(drawPct)}
+            </span>
+          )}
           {short > 0 && <span className="db-tile-need">need {short}</span>}
           {tag && <span className="db-tag-badge" style={{ background: TAG_COLOR[tag] }}>{tag}</span>}
           {chosen && <span className="db-chosen-badge">★ champ</span>}
