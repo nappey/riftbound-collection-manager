@@ -17,6 +17,7 @@ import Shopping from './pages/Shopping';
 import Stats from './pages/Stats';
 import { fetchTcgProducts, augmentCards } from './utils/tcgAugment';
 import { augmentRunes } from './utils/runeArt';
+import { SET_LOGOS } from './utils/setLogos';
 import './App.css';
 import './pages.css';
 
@@ -56,13 +57,15 @@ const PROMO_SHORT_LABELS = {
 };
 
 async function fetchAllCards() {
-  const first = await fetch(`${API_BASE}/cards?size=${PAGE_SIZE}&page=1`).then((r) => {
+  // no-store so new sets/cards always appear on launch instead of being served
+  // a stale cached response from disk.
+  const first = await fetch(`${API_BASE}/cards?size=${PAGE_SIZE}&page=1`, { cache: 'no-store' }).then((r) => {
     if (!r.ok) throw new Error(`API error: ${r.status}`);
     return r.json();
   });
   const remaining = [];
   for (let p = 2; p <= first.pages; p++) {
-    remaining.push(fetch(`${API_BASE}/cards?size=${PAGE_SIZE}&page=${p}`).then((r) => r.json()));
+    remaining.push(fetch(`${API_BASE}/cards?size=${PAGE_SIZE}&page=${p}`, { cache: 'no-store' }).then((r) => r.json()));
   }
   const rest = await Promise.all(remaining);
   return [first, ...rest].flatMap((d) => d.items);
@@ -73,7 +76,7 @@ async function fetchAllCards() {
 // groups endpoint is unavailable.
 async function fetchGroupIds() {
   try {
-    const res = await fetch(`${TCGCSV_BASE}/groups`).then((r) => {
+    const res = await fetch(`${TCGCSV_BASE}/groups`, { cache: 'no-store' }).then((r) => {
       if (!r.ok) throw new Error(`groups ${r.status}`);
       return r.json();
     });
@@ -113,7 +116,8 @@ async function fetchAllPrices() {
 function applyFilters(cards, filters, collection) {
   const search = filters.search.toLowerCase().trim();
   return cards.filter((card) => {
-    if (search && !card.name.toLowerCase().includes(search)) return false;
+    if (search && !card.name.toLowerCase().includes(search)
+        && !(card.tags ?? []).some((t) => t.toLowerCase().includes(search))) return false;
     if (filters.type && card.classification?.type !== filters.type) return false;
     if (filters.rarity && card.classification?.rarity?.toLowerCase() !== filters.rarity.toLowerCase()) return false;
     if (filters.domain) {
@@ -482,6 +486,7 @@ export default function App() {
     }, 0) : null;
     setProgressStats = {
       name: cardsBySet[currentSetId]?.label ?? currentSetId,
+      logo: SET_LOGOS[currentSetId] ?? null,
       art: pickSetArt(allSetCards),
       playsets, partial, missing,
       total: allSetCards.length,
@@ -647,7 +652,9 @@ export default function App() {
               {setProgressStats && (
                 <div className="set-progress">
                   <div className="set-progress-head">
-                    {setProgressStats.art && (
+                    {setProgressStats.logo ? (
+                      <img className="set-logo" src={setProgressStats.logo} alt={setProgressStats.name} />
+                    ) : setProgressStats.art ? (
                       <button
                         className="set-cover"
                         onClick={() => setModalCard(setProgressStats.art)}
@@ -655,9 +662,9 @@ export default function App() {
                       >
                         <img src={setProgressStats.art.media.image_url} alt="" loading="lazy" />
                       </button>
-                    )}
+                    ) : null}
                     <div className="set-progress-headings">
-                      <h2 className="set-progress-title">{setProgressStats.name}</h2>
+                      {!setProgressStats.logo && <h2 className="set-progress-title">{setProgressStats.name}</h2>}
                       <span className="set-progress-sub">
                         {setProgressStats.playsets} playsets · {setProgressStats.partial} in progress · {setProgressStats.missing} missing
                       </span>

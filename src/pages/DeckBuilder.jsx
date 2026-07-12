@@ -439,7 +439,12 @@ export default function DeckBuilder({
   const results = useMemo(() => {
     const q = search.toLowerCase().trim();
     if (!q) return [];
-    return allCards.filter(c => c.name.toLowerCase().includes(q)).slice(0, 30);
+    // Match name OR tags — champion identity (e.g. "Kennen") lives in tags,
+    // since legend cards are named by title ("Heart of the Tempest").
+    return allCards.filter(c =>
+      c.name.toLowerCase().includes(q) ||
+      (c.tags ?? []).some(t => t.toLowerCase().includes(q))
+    ).slice(0, 30);
   }, [allCards, search]);
 
   // ── analysis (plain function; React Compiler memoizes) ────────
