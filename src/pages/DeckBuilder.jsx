@@ -172,6 +172,7 @@ export default function DeckBuilder({
   const [sidingCopied, setSidingCopied] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState('');
+  const [exportOpen, setExportOpen] = useState(false);
   const [logCats, setLogCats] = useState([]); // active change-log filters ([] = all)
   const toggleLogCat = (c) => setLogCats(prev => prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c]);
 
@@ -516,8 +517,9 @@ export default function DeckBuilder({
   const domainEntries = stats ? Object.entries(stats.domains).sort((a, b) => b[1] - a[1]) : [];
   const maxDomain = domainEntries.length ? domainEntries[0][1] : 1;
 
-  async function copyDecklist() {
-    if (!active || !analysis) return;
+  // Build the plain-text decklist — the exact section format the importer reads.
+  function buildDecklistText() {
+    if (!active || !analysis) return '';
     let out = '';
     if (analysis.legend) out += `Legend:\n1 ${analysis.legend.name}\n\n`;
     if (champion) out += `Champion:\n1 ${champion.name}\n\n`;
@@ -542,7 +544,13 @@ export default function DeckBuilder({
       for (const { card, qty } of analysis.sideboardRows) out += `${qty} ${card.name}\n`;
       out += '\n';
     }
-    await navigator.clipboard.writeText(out.trimEnd());
+    return out.trimEnd();
+  }
+
+  async function copyDecklist() {
+    const text = buildDecklistText();
+    if (!text) return;
+    await navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
   }
@@ -700,14 +708,40 @@ export default function DeckBuilder({
       <aside className="db-sidebar">
         <div className="db-new-row">
           <button className="btn primary db-new" onClick={createDeck}>+ New deck</button>
+        </div>
+        <div className="db-io-row">
           <button
-            className={`btn db-import-toggle${importOpen ? ' active' : ''}`}
-            onClick={() => setImportOpen(o => !o)}
+            className={`btn db-io-toggle${importOpen ? ' active' : ''}`}
+            onClick={() => { setImportOpen(o => !o); setExportOpen(false); }}
             title="Import a decklist from text"
           >
             ⤓ Import
           </button>
+          <button
+            className={`btn db-io-toggle${exportOpen ? ' active' : ''}`}
+            onClick={() => { setExportOpen(o => !o); setImportOpen(false); }}
+            disabled={!active}
+            title="Export this deck as a text list"
+          >
+            ⤒ Export
+          </button>
         </div>
+
+        {exportOpen && active && (
+          <div className="db-import db-export">
+            <textarea
+              className="deck-textarea db-import-text"
+              value={buildDecklistText()}
+              readOnly
+              spellCheck={false}
+              onFocus={e => e.target.select()}
+            />
+            <div className="deck-btns">
+              <button className="btn primary" onClick={copyDecklist}>{copied ? '✓ Copied' : 'Copy decklist'}</button>
+              <button className="btn ghost" onClick={() => setExportOpen(false)}>Close</button>
+            </div>
+          </div>
+        )}
 
         {importOpen && (
           <div className="db-import">

@@ -86,8 +86,10 @@
 .db-sidebar { display: flex; flex-direction: column; gap: 10px; }
 .db-new-row { display: flex; gap: 6px; }
 .db-new { flex: 1; justify-content: center; }
-.db-import-toggle { padding-inline: 10px; }
-.db-import-toggle.active { border-color: var(--accent-line); color: var(--text-0); }
+.db-io-row { display: flex; gap: 6px; }
+.db-io-toggle { flex: 1; justify-content: center; padding-inline: 8px; }
+.db-io-toggle.active { border-color: var(--accent-line); color: var(--text-0); }
+.db-io-toggle:disabled { opacity: 0.5; cursor: default; }
 .db-import { display: flex; flex-direction: column; gap: 8px; background: var(--bg-1); border: 1px solid var(--border-0); border-radius: var(--radius-md); padding: 10px; }
 .db-import-text { min-height: 160px; font-size: 11px; }
 .db-import-report { display: flex; gap: 10px; font-size: 11px; font-family: var(--font-mono); }
