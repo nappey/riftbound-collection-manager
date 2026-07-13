@@ -33,3 +33,6 @@ electron/test-pkg/
 *.csv
 app-stdout.txt
 app-stderr.txt
+
+# UI design mockups (not part of the app)
+/mockups/
