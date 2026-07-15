@@ -17,6 +17,7 @@ import Shopping from './pages/Shopping';
 import Stats from './pages/Stats';
 import { fetchTcgProducts, augmentCards } from './utils/tcgAugment';
 import { augmentRunes } from './utils/runeArt';
+import { dedupeCards } from './utils/dedupeCards';
 import { SET_LOGOS } from './utils/setLogos';
 import './App.css';
 import './pages.css';
@@ -298,6 +299,10 @@ export default function App() {
   useEffect(() => {
     fetchAllCards()
       .then(async (cards) => {
+        // The API re-ingests some sets (currently Vendetta), serving each card
+        // several times under different ids. Drop the ghosts before anything
+        // downstream counts or groups them.
+        cards = dedupeCards(cards);
         try {
           // Swap in the correct Arcane (PR) promo art (riftcodex serves the
           // base art for those).
