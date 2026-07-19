@@ -27,32 +27,14 @@ Sideboard:
 //   runes: {domain:count}, tags: {cardId:label} }
 
 const MAIN_TARGET = 40;
-const SIDEBOARD_MAX = 8;
+const SIDEBOARD_MAX = 10;
 const RUNE_TARGET = 12;
-const OPENING_HAND = 4; // Riftbound opening hand size
-
-// Hypergeometric: chance of drawing at least one of `copies` in an opening hand
-// of `hand` cards from a main deck of `deckSize`. Uses the product form of
-// P(none) for numerical stability.
-function drawChance(copies, deckSize, hand) {
-  const N = deckSize;
-  const k = copies;
-  const n = Math.min(hand, N);
-  if (k <= 0 || N <= 0) return 0;
-  if (N - k < n) return 1; // too few other cards to avoid it
-  let pNone = 1;
-  for (let i = 0; i < n; i++) pNone *= (N - k - i) / (N - i);
-  return 1 - pNone;
-}
-
-function fmtPct(p) {
-  const pct = p * 100;
-  if (pct > 0 && pct < 1) return '<1%';
-  return `${Math.round(pct)}%`;
-}
 
 const ELEMENTAL_DOMAINS = ['Body', 'Calm', 'Chaos', 'Fury', 'Mind', 'Order'];
 const TAGS = ['core', 'amazing', 'flex', 'bad'];
+// Type quick-filter chips for the card library (matches classification.type,
+// except 'Champion' which is a supertype).
+const LIB_TYPES = ['Legend', 'Champion', 'Unit', 'Spell', 'Gear', 'Rune', 'Battlefield'];
 const TAG_COLOR = { core: 'var(--accent)', amazing: 'var(--ok)', flex: 'var(--warn)', bad: 'var(--miss)' };
 
 const uid = () => `deck-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -159,9 +141,12 @@ export default function DeckBuilder({
   allCards, collection, foilCollection, prices, pricesLoading,
   decks, setDecks, onOpenModal, newDeckLegend, onNewDeckConsumed,
 }) {
-  const [activeId, setActiveId] = useState(() => decks[0]?.id ?? null);
-  const [search, setSearch] = useState('');
-  const [searchOpen, setSearchOpen] = useState(false);
+  const [activeId, setActiveId] = useState(null); // null → deck gallery; id → builder
+  const [libFilter, setLibFilter] = useState('');   // library search text
+  const [libType, setLibType] = useState('');        // library type quick-filter ('' = all)
+  const [view, setView] = useState('build');         // center view: 'build' | 'details'
+  const [collapsed, setCollapsed] = useState({});     // collapsed deck-panel sections
+  const toggleCollapse = (key) => setCollapsed(c => ({ ...c, [key]: !c[key] }));
   const [copied, setCopied] = useState(false);
   const [imgBusy, setImgBusy] = useState(false);
   // In-progress match entry (opponent legend, game result, dice-roll result).
@@ -172,7 +157,6 @@ export default function DeckBuilder({
   const [sidingCopied, setSidingCopied] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState('');
-  const [exportOpen, setExportOpen] = useState(false);
   const [logCats, setLogCats] = useState([]); // active change-log filters ([] = all)
   const toggleLogCat = (c) => setLogCats(prev => prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c]);
 
@@ -276,7 +260,7 @@ export default function DeckBuilder({
   }
   function deleteDeck(id) {
     setDecks(prev => prev.filter(d => d.id !== id));
-    if (activeId === id) setActiveId(decks.filter(d => d.id !== id)[0]?.id ?? null);
+    if (activeId === id) { setActiveId(null); resetLibFilters(); } // back to gallery
   }
 
   function adjustZone(zone, cardId, delta) {
@@ -336,11 +320,13 @@ export default function DeckBuilder({
         ? `Changed legend → ${card.name}` : `Set legend: ${card.name}`;
       return withLog(patch, text, 'legend');
     });
+    resetLibFilters(); // moving to step 2 — drop any legend-name filter
   }
   function clearLegend() {
     mutate(active.id, d => d.legendId
       ? withLog({ ...d, legendId: null }, `Removed legend: ${cardById.get(d.legendId)?.name ?? ''}`, 'legend')
       : d);
+    resetLibFilters(); // back to step 1
   }
 
   function resetRunesFromLegend() {
@@ -436,17 +422,57 @@ export default function DeckBuilder({
     });
   }
 
-  // ── search ────────────────────────────────────────────────────
-  const results = useMemo(() => {
-    const q = search.toLowerCase().trim();
-    if (!q) return [];
-    // Match name OR tags — champion identity (e.g. "Kennen") lives in tags,
-    // since legend cards are named by title ("Heart of the Tempest").
-    return allCards.filter(c =>
-      c.name.toLowerCase().includes(q) ||
-      (c.tags ?? []).some(t => t.toLowerCase().includes(q))
-    ).slice(0, 30);
-  }, [allCards, search]);
+  // ── library (browsable card grid) ─────────────────────────────
+  // Two-step flow: with no legend chosen yet, the grid shows ONLY legends
+  // (step 1); once a legend is set it shows the rest of the pool with legends
+  // excluded (step 2), filtered by name/tags and an optional type chip.
+  // Match name OR tags — champion identity (e.g. "Kennen") lives in tags,
+  // since legend cards are named by title ("Heart of the Tempest").
+  const hasLegend = !!active?.legendId;
+  const legendCard = hasLegend ? cardById.get(active.legendId) : null;
+  // Library results (plain function; React Compiler memoizes — see computeAnalysis).
+  // Two-step flow: step 1 shows only legends; step 2 shows the rest of the pool,
+  // restricted to cards playable in the chosen legend's domains.
+  function computeLibResults() {
+    const q = libFilter.toLowerCase().trim();
+    const typeOf = (c) => c.classification?.supertype === 'Champion' ? 'Champion' : c.classification?.type;
+    const TYPE_ORDER = { Champion: 0, Unit: 1, Spell: 2, Gear: 3, Rune: 4, Battlefield: 5 };
+    const matchQ = (c) => !q || c.name.toLowerCase().includes(q) || (c.tags ?? []).some(t => t.toLowerCase().includes(q));
+    // A card is playable if every elemental domain it has is one of the
+    // legend's domains; domainless/neutral cards are always allowed.
+    const legendSet = new Set(legendCard ? legendDomains(legendCard) : []);
+    const inLegendDomains = (c) =>
+      (c.classification?.domain ?? [])
+        .filter(d => ELEMENTAL_DOMAINS.includes(d))
+        .every(d => legendSet.has(d));
+    return allCards
+      .filter(c => {
+        const isLegend = c.classification?.type === 'Legend';
+        if (!hasLegend) return isLegend && matchQ(c);       // step 1 — legends only
+        if (isLegend) return false;                         // step 2 — everything but legends
+        if (!inLegendDomains(c)) return false;              // only the legend's domains
+        if (libType && typeOf(c) !== libType) return false;
+        return matchQ(c);
+      })
+      .sort((a, b) =>
+        (TYPE_ORDER[typeOf(a)] ?? 9) - (TYPE_ORDER[typeOf(b)] ?? 9) ||
+        (a.attributes?.energy ?? 99) - (b.attributes?.energy ?? 99) ||
+        a.name.localeCompare(b.name));
+  }
+  const libResults = computeLibResults();
+
+  // Clear the library filter/type — called when the step flips (legend
+  // set/removed) or the active deck changes, so a stale filter doesn't linger.
+  const resetLibFilters = useCallback(() => { setLibFilter(''); setLibType(''); }, []);
+
+  // How many copies of a card the active deck already holds (across every zone,
+  // counting the legend/champion slots) — drives the library "in deck" badge/cap.
+  function qtyInDeck(cardId) {
+    if (!active) return 0;
+    let n = (active.main[cardId] ?? 0) + (active.sideboard[cardId] ?? 0) + (active.bench[cardId] ?? 0);
+    if (active.legendId === cardId) n += 1;
+    return n;
+  }
 
   // ── analysis (plain function; React Compiler memoizes) ────────
   function computeAnalysis() {
@@ -581,57 +607,81 @@ export default function DeckBuilder({
     setTimeout(() => setSidingCopied(false), 1800);
   }
 
-  // ── shared tile renderer (plain function, not a nested component) ──
-  function renderTile(row, zone) {
-    const { card, qty } = row;
-    const short = Math.max(0, qty - (row.owned ?? ownedTotal(card, collection, foilCollection)));
+  // ── deck-zone card tile (one tile per physical copy) ─────────────
+  // Each copy of a card shows as its own small image, so a 3-of appears as
+  // three cards. Remove / move / tag controls appear on hover.
+  function renderCopyTile(card, zone, key, missing) {
     const chosen = active.championId === card.id;
     const tag = active.tags[card.id];
-    // Opening-hand draw odds only apply to cards drawn from the main deck
-    // (battlefields and runes are separate zones).
-    const drawable = zone === 'main' && card.classification?.type !== 'Battlefield' && analysis.mainCount > 0;
-    const drawPct = drawable ? drawChance(qty, analysis.mainCount, OPENING_HAND) : null;
     return (
-      <div key={card.id} className={`db-tile${short > 0 ? ' short' : ''}${chosen ? ' chosen' : ''}`}>
-        <button className="db-tile-art" onClick={() => onOpenModal?.(card)} title="View details">
+      <div key={key} className={`db-mini-tile${missing ? ' short' : ''}${chosen ? ' chosen' : ''}`}>
+        <button className="db-mini-tile-art" onClick={() => onOpenModal?.(card)} title={card.name}>
           {card.media?.image_url
             ? <img src={card.media.image_url} alt={card.name} loading="lazy" />
-            : <span className="db-tile-ph">{card.name}</span>}
-          <span className="db-tile-qty">{qty}×{isAlwaysFoil(card) && <span className="db-foil">✦</span>}</span>
-          {drawPct != null && (
-            <span className="db-tile-draw" title={`${fmtPct(drawPct)} chance to be in your ${OPENING_HAND}-card opening hand (main deck of ${analysis.mainCount})`}>
-              {fmtPct(drawPct)}
-            </span>
-          )}
-          {short > 0 && <span className="db-tile-need">need {short}</span>}
-          {tag && <span className="db-tag-badge" style={{ background: TAG_COLOR[tag] }}>{tag}</span>}
-          {chosen && <span className="db-chosen-badge">★ champ</span>}
+            : <span className="db-lib-ph">{card.name}</span>}
+          {isAlwaysFoil(card) && <span className="db-mini-foil">✦</span>}
+          {chosen && <span className="db-mini-star">★</span>}
+          {tag && <span className="db-mini-tag" style={{ background: TAG_COLOR[tag] }} />}
+          {missing && <span className="db-mini-need">need</span>}
         </button>
-        <div className="db-tile-foot">
-          <div className="stepper">
-            <button onClick={() => adjustZone(zone, card.id, -1)}>−</button>
-            <span className="val">{qty}</span>
-            <button onClick={() => adjustZone(zone, card.id, 1)} disabled={qty >= deckCap(card)}>+</button>
-          </div>
-          <span className="db-tile-name" title={card.name}>{card.name}</span>
-        </div>
-        <div className="db-tile-controls">
-          <select
-            className="db-tag-select"
-            value={tag ?? ''}
-            onChange={(e) => setTag(card.id, e.target.value)}
-            title="Tag"
-          >
+        <div className="db-mini-controls">
+          <button className="db-mini-rm" title="Remove this copy" onClick={() => adjustZone(zone, card.id, -1)}>−</button>
+          {zone !== 'main' && <button title="To main deck" onClick={() => moveCard(card.id, zone, 'main')}>M</button>}
+          {zone !== 'sideboard' && <button title="To sideboard" onClick={() => moveCard(card.id, zone, 'sideboard')}>SB</button>}
+          {zone !== 'bench' && <button title="To bench" onClick={() => moveCard(card.id, zone, 'bench')}>B</button>}
+          <select className="db-tag-select" value={tag ?? ''} onChange={(e) => setTag(card.id, e.target.value)} title="Tag">
             <option value="">tag…</option>
             {TAGS.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
-          <div className="db-move">
-            {zone !== 'main' && <button title="To main deck" onClick={() => moveCard(card.id, zone, 'main')}>Main</button>}
-            {zone !== 'sideboard' && <button title="To sideboard" onClick={() => moveCard(card.id, zone, 'sideboard')}>SB</button>}
-            {zone !== 'bench' && <button title="To bench" onClick={() => moveCard(card.id, zone, 'bench')}>Bench</button>}
-          </div>
         </div>
       </div>
+    );
+  }
+
+  // Expand a zone's rows into one tile per physical copy (a playset shows 3).
+  // Copies beyond the number owned are flagged as "need".
+  function renderZoneTiles(rows, zone) {
+    return rows.flatMap(({ card, qty, owned }) => {
+      const have = owned ?? ownedTotal(card, collection, foilCollection);
+      return Array.from({ length: qty }, (_, i) =>
+        renderCopyTile(card, zone, `${card.id}-${i}`, i >= have));
+    });
+  }
+
+  // Collapsible section header for the deck panel.
+  function zoneHead(key, title, countNode) {
+    return (
+      <button className="db-section-head db-section-toggle" onClick={() => toggleCollapse(key)}>
+        <span className="db-section-title"><span className="db-chevron">{collapsed[key] ? '▸' : '▾'}</span>{title}</span>
+        {countNode}
+      </button>
+    );
+  }
+
+  // A library grid tile — click to add the card to the deck.
+  function renderLibTile(card) {
+    const inDeck = qtyInDeck(card.id);
+    const atCap = inDeck >= deckCap(card);
+    const isLegend = card.classification?.type === 'Legend';
+    const kind = card.classification?.supertype === 'Champion' ? 'Champion' : card.classification?.type;
+    return (
+      <button
+        key={card.id}
+        className={`db-lib-tile${inDeck > 0 ? ' in-deck' : ''}${atCap ? ' at-cap' : ''}`}
+        onClick={() => addCard(card)}
+        disabled={atCap}
+        title={atCap ? `${card.name} — at max (${deckCap(card)})` : `Add ${card.name}`}
+      >
+        <span className="db-lib-art">
+          {card.media?.image_url
+            ? <img src={card.media.image_url} alt={card.name} loading="lazy" />
+            : <span className="db-lib-ph">{card.name}</span>}
+          {inDeck > 0 && <span className="db-lib-count">{isLegend ? '✓' : `×${inDeck}`}</span>}
+          {!atCap && <span className="db-lib-add">＋</span>}
+        </span>
+        <span className="db-lib-name" title={card.name}>{card.name}</span>
+        <span className="db-lib-meta">{kind}</span>
+      </button>
     );
   }
 
@@ -702,46 +752,23 @@ export default function DeckBuilder({
     );
   }
 
-  return (
-    <div className="db-wrap">
-      {/* ── Deck list sidebar ── */}
-      <aside className="db-sidebar">
-        <div className="db-new-row">
-          <button className="btn primary db-new" onClick={createDeck}>+ New deck</button>
-        </div>
-        <div className="db-io-row">
-          <button
-            className={`btn db-io-toggle${importOpen ? ' active' : ''}`}
-            onClick={() => { setImportOpen(o => !o); setExportOpen(false); }}
-            title="Import a decklist from text"
-          >
-            ⤓ Import
-          </button>
-          <button
-            className={`btn db-io-toggle${exportOpen ? ' active' : ''}`}
-            onClick={() => { setExportOpen(o => !o); setImportOpen(false); }}
-            disabled={!active}
-            title="Export this deck as a text list"
-          >
-            ⤒ Export
-          </button>
-        </div>
-
-        {exportOpen && active && (
-          <div className="db-import db-export">
-            <textarea
-              className="deck-textarea db-import-text"
-              value={buildDecklistText()}
-              readOnly
-              spellCheck={false}
-              onFocus={e => e.target.select()}
-            />
-            <div className="deck-btns">
-              <button className="btn primary" onClick={copyDecklist}>{copied ? '✓ Copied' : 'Copy decklist'}</button>
-              <button className="btn ghost" onClick={() => setExportOpen(false)}>Close</button>
-            </div>
+  // ── deck gallery (landing view — legend art + New deck) ───────
+  function renderGallery() {
+    return (
+      <div className="db-gallery">
+        <div className="db-gallery-head">
+          <h2 className="db-gallery-title">Your Decks</h2>
+          <div className="db-gallery-actions">
+            <button
+              className={`btn db-io-toggle${importOpen ? ' active' : ''}`}
+              onClick={() => setImportOpen(o => !o)}
+              title="Import a decklist from text"
+            >
+              ⤓ Import
+            </button>
+            <button className="btn primary" onClick={() => { createDeck(); resetLibFilters(); }}>+ New deck</button>
           </div>
-        )}
+        </div>
 
         {importOpen && (
           <div className="db-import">
@@ -775,180 +802,202 @@ export default function DeckBuilder({
           </div>
         )}
 
-        <div className="db-deck-list">
-          {decks.length === 0 && <div className="db-empty">No decks yet.</div>}
-          {decks.map(d => {
-            const nd = normalizeDeck(d, cardById);
-            const count = sumQty(nd.main);
-            return (
-              <button
-                key={d.id}
-                className={`db-deck-item${d.id === activeId ? ' active' : ''}`}
-                onClick={() => setActiveId(d.id)}
-              >
-                <span className="db-deck-name">{d.name}</span>
-                <span className="db-deck-count">{count}</span>
-              </button>
-            );
-          })}
+        {decks.length === 0 ? (
+          <div className="db-gallery-empty">No decks yet — click <b>+ New deck</b> to build one.</div>
+        ) : (
+          <div className="db-gallery-grid">
+            {decks.map(d => {
+              const nd = normalizeDeck(d, cardById);
+              const legend = nd.legendId ? cardById.get(nd.legendId) : null;
+              const champ = nd.championId ? cardById.get(nd.championId) : null;
+              const count = sumQty(nd.main);
+              return (
+                <button
+                  key={d.id}
+                  className="db-gallery-card"
+                  onClick={() => { setActiveId(d.id); resetLibFilters(); }}
+                  title={`Open ${d.name}`}
+                >
+                  <span className="db-gallery-art">
+                    {legend?.media?.image_url
+                      ? <img src={legend.media.image_url} alt={legend.name} loading="lazy" />
+                      : <span className="db-gallery-ph">No legend yet</span>}
+                    <span className="db-gallery-count">{count} cards</span>
+                  </span>
+                  <span className="db-gallery-info">
+                    <span className="db-gallery-name">{d.name}</span>
+                    <span className="db-gallery-sub">{legend ? legend.name : 'No legend'}{champ ? ` · ★ ${champ.name}` : ''}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (!active) return renderGallery();
+
+  return (
+    <div className="db-wrap">
+      {/* ── Builder ── */}
+      <div className="db-editor">
+        <div className="db-editor-head">
+          <button className="db-back" onClick={() => { setActiveId(null); resetLibFilters(); }} title="Back to your decks">← Decks</button>
+          <input
+            className="db-name-input"
+            value={active.name}
+            onChange={e => mutate(active.id, d => ({ ...d, name: e.target.value }))}
+          />
+          <div className="db-head-actions">
+            <button className="btn ghost" onClick={() => duplicateDeck(active)}>Duplicate</button>
+            <button className="btn ghost danger" onClick={() => deleteDeck(active.id)}>Delete</button>
+          </div>
         </div>
-      </aside>
 
-      {/* ── Editor ── */}
-      {!active ? (
-        <div className="db-editor"><div className="status-placeholder">Create a deck to get started.</div></div>
-      ) : (
-        <div className="db-editor">
-          <div className="db-editor-head">
-            <input
-              className="db-name-input"
-              value={active.name}
-              onChange={e => mutate(active.id, d => ({ ...d, name: e.target.value }))}
-            />
-            <div className="db-head-actions">
-              <button className="btn ghost" onClick={() => duplicateDeck(active)}>Duplicate</button>
-              <button className="btn ghost danger" onClick={() => deleteDeck(active.id)}>Delete</button>
-            </div>
+          {/* View tabs: browse the library, or dig into deck details */}
+          <div className="db-view-tabs">
+            <button className={`db-view-tab${view === 'build' ? ' active' : ''}`} onClick={() => setView('build')}>Build</button>
+            <button className={`db-view-tab${view === 'details' ? ' active' : ''}`} onClick={() => setView('details')}>Details</button>
           </div>
 
-          {/* Search with thumbnails; results hide on click-away */}
-          <div className="db-add">
-            <input
-              className="db-search"
-              type="search"
-              placeholder="Search cards to add…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              onFocus={() => setSearchOpen(true)}
-              onBlur={() => setTimeout(() => setSearchOpen(false), 150)}
-            />
-            {searchOpen && results.length > 0 && (
-              <div className="db-results">
-                {results.map(c => (
-                  <button key={c.id} className="db-result" onMouseDown={(e) => { e.preventDefault(); addCard(c); }}>
-                    <span className="db-result-thumb">
-                      {c.media?.image_url ? <img src={c.media.image_url} alt="" loading="lazy" /> : null}
-                    </span>
-                    <span className="db-result-name">{c.name}</span>
-                    <span className="db-result-meta">
-                      {c.classification?.supertype === 'Champion' ? 'Champion' : c.classification?.type}
-                    </span>
-                    <span className="db-result-add">+</span>
-                  </button>
-                ))}
+          {view === 'build' ? (
+            /* ── Card library: step 1 pick a legend, step 2 add cards ── */
+            <div className="db-library">
+              <div className="db-lib-step">
+                {hasLegend ? (
+                  <>
+                    <span className="db-lib-step-n">Step 2</span> Add cards — showing your legend's domains:
+                    {legendCard && legendDomains(legendCard).length > 0 && (
+                      <span className="db-legend-domains">
+                        {legendDomains(legendCard).map(dm => (
+                          <span key={dm} className="db-domain-pill" style={{ color: `var(--d-${dm.toLowerCase()})` }}>{dm}</span>
+                        ))}
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <><span className="db-lib-step-n">Step 1</span> Pick your legend — it sets your domains and rune deck.</>
+                )}
               </div>
-            )}
-          </div>
-
-          <div className="db-contents">
-            {/* Identity: Legend + Chosen Champion side by side, large art */}
-            {renderSection('Identity', null, null, (
-              <div className="db-identity">
-                {/* Legend */}
-                <div className="db-identity-slot">
-                  <div className="db-identity-label">Legend</div>
-                  {analysis.legend ? (
-                    <div className="db-identity-card">
-                      <button className="db-identity-img" onClick={() => onOpenModal?.(analysis.legend)} title="View details">
-                        {analysis.legend.media?.image_url
-                          ? <img src={analysis.legend.media.image_url} alt={analysis.legend.name} loading="lazy" />
-                          : <span className="db-tile-ph">{analysis.legend.name}</span>}
-                        <span className="db-legend-badge">Legend</span>
-                      </button>
-                      <div className="db-identity-info">
-                        <span className="db-champion-name">{analysis.legend.name}</span>
-                        <span className="db-legend-domains">
-                          {legendDomains(analysis.legend).map(dm => (
-                            <span key={dm} className="db-domain-pill" style={{ color: `var(--d-${dm.toLowerCase()})` }}>{dm}</span>
-                          ))}
-                        </span>
-                        <button className="btn ghost danger" style={{ alignSelf: 'flex-start' }} onClick={clearLegend}>Remove</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="db-identity-empty">Add a <b>Legend</b> from search — its domains set up your rune deck.</div>
-                  )}
-                </div>
-
-                {/* Chosen Champion — pick from the champions in your main deck */}
-                <div className="db-identity-slot">
-                  <div className="db-identity-label">Chosen Champion</div>
-                  {championOptions.length === 0 ? (
-                    <div className="db-identity-empty">Add a <b>Champion</b> to your main deck, then pick it here.</div>
-                  ) : (
-                    <>
-                      <select
-                        className="db-champ-select"
-                        value={champion?.id ?? ''}
-                        onChange={e => chooseChampion(e.target.value)}
+              <div className="db-lib-toolbar">
+                <input
+                  className="db-lib-filter"
+                  type="search"
+                  placeholder={hasLegend ? 'Filter cards by name or tag…' : 'Filter legends…'}
+                  value={libFilter}
+                  onChange={e => setLibFilter(e.target.value)}
+                />
+                {hasLegend && (
+                  <div className="db-lib-chips">
+                    {LIB_TYPES.filter(t => t !== 'Legend').map(t => (
+                      <button
+                        key={t}
+                        className={`db-lib-chip${libType === t ? ' active' : ''}`}
+                        onClick={() => setLibType(libType === t ? '' : t)}
                       >
-                        <option value="">— Select chosen champion —</option>
-                        {championOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
-                      {champion ? (
-                        <div className="db-identity-card">
-                          <button className="db-identity-img" onClick={() => onOpenModal?.(champion)} title="View details">
-                            {champion.media?.image_url
-                              ? <img src={champion.media.image_url} alt={champion.name} loading="lazy" />
-                              : <span className="db-tile-ph">{champion.name}</span>}
-                            <span className="db-legend-badge champ">Champion</span>
-                          </button>
-                          <div className="db-identity-info">
-                            <span className="db-champion-name">{champion.name}</span>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="db-identity-empty">Pick your chosen champion from the list above.</div>
-                      )}
-                    </>
-                  )}
-                </div>
+                        {t}
+                      </button>
+                    ))}
+                    {libType && <button className="db-lib-chip clear" onClick={() => setLibType('')}>Clear</button>}
+                  </div>
+                )}
+                <span className="db-lib-total">{libResults.length} {hasLegend ? 'cards' : 'legends'}</span>
               </div>
-            ))}
+              {libResults.length
+                ? <div className="db-lib-grid">{libResults.map(renderLibTile)}</div>
+                : <div className="db-zone-empty">No {hasLegend ? 'cards' : 'legends'} match — adjust the filter.</div>}
+            </div>
+          ) : (
+            /* ── Details: stats, matchups, siding, notes, change log ── */
+            <div className="db-contents">
+              <div className="db-stats-grid">
+                {/* Energy curve */}
+                <div className="deck-stat-card">
+                  <h3>Energy curve <span className="db-stat-sub">avg {stats.avgEnergy.toFixed(1)}</span></h3>
+                  <div className="db-curve">
+                    {stats.curve.map((n, e) => (
+                      <div key={e} className="db-curve-col">
+                        <span className="db-curve-n">{n || ''}</span>
+                        <div className="db-curve-track"><div className="db-curve-bar" style={{ height: `${(n / stats.maxCurve) * 100}%` }} /></div>
+                        <span className="db-curve-x">{e === 7 ? '7+' : e}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
-            {/* Main deck */}
-            {renderSection('Main Deck', analysis.mainCount, MAIN_TARGET, analysis.mainRows.length
-              ? <div className="db-tile-grid">{analysis.mainRows.map(r => renderTile(r, 'main'))}</div>
-              : <div className="db-zone-empty">Empty — search above to add cards. Star a champion to set your chosen champ.</div>)}
+                {/* Composition */}
+                <div className="deck-stat-card">
+                  <h3>Composition</h3>
+                  <div className="db-stat-rows">
+                    {[['Champions', 'Champion'], ['Units', 'Unit'], ['Spells', 'Spell'], ['Gear', 'Gear'], ['Battlefields', 'Battlefield']]
+                      .filter(([, k]) => stats.types[k] > 0)
+                      .map(([label, k]) => (
+                        <div key={k} className="db-stat-row"><span>{label}</span><span>{stats.types[k]}</span></div>
+                      ))}
+                    {analysis.mainCount === 0 && <div className="db-stat-muted">No cards yet.</div>}
+                  </div>
+                </div>
 
-            {/* Battlefields */}
-            {analysis.battlefieldRows.length > 0 && renderSection(
-              'Battlefields',
-              analysis.battlefieldRows.reduce((n, r) => n + r.qty, 0),
-              null,
-              <div className="db-tile-grid">{analysis.battlefieldRows.map(r => renderTile(r, 'main'))}</div>,
-            )}
-
-            {/* Rune deck */}
-            {renderSection('Rune Deck', analysis.runeCount, RUNE_TARGET, !analysis.legend ? (
-              <div className="db-zone-empty">Add a legend to set up runes.</div>
-            ) : (
-              <div className="db-rune-deck">
-                {[...new Set([...legendDomains(analysis.legend), ...Object.keys(active.runes)])].map(dm => (
-                  <div key={dm} className="db-rune-row">
-                    <span className="db-rune-name" style={{ color: `var(--d-${dm.toLowerCase()})` }}>
-                      <span className="db-rune-dot" style={{ background: `var(--d-${dm.toLowerCase()})` }} />{dm}
-                    </span>
-                    <div className="stepper">
-                      <button onClick={() => adjustRune(dm, -1)} disabled={!active.runes[dm]}>−</button>
-                      <span className="val">{active.runes[dm] ?? 0}</span>
-                      <button onClick={() => adjustRune(dm, 1)}>+</button>
+                {/* Domains */}
+                {domainEntries.length > 0 && (
+                  <div className="deck-stat-card">
+                    <h3>Domains</h3>
+                    <div className="db-stat-rows">
+                      {domainEntries.map(([dm, n]) => (
+                        <div key={dm} className="db-domain-stat">
+                          <span className="db-domain-name" style={{ color: `var(--d-${dm.toLowerCase()})` }}>
+                            <span className="db-rune-dot" style={{ background: `var(--d-${dm.toLowerCase()})` }} />{dm}
+                          </span>
+                          <div className="db-domain-track">
+                            <span className="db-domain-fill" style={{ width: `${(n / maxDomain) * 100}%`, background: `var(--d-${dm.toLowerCase()})` }} />
+                          </div>
+                          <span className="db-domain-n">{n}</span>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                ))}
-                <button className="btn ghost" style={{ marginTop: 4 }} onClick={resetRunesFromLegend}>↻ Reset from legend</button>
+                )}
+
+                {/* Tags */}
+                {hasTags && (
+                  <div className="deck-stat-card">
+                    <h3>Tags</h3>
+                    <div className="db-tag-counts">
+                      {TAGS.filter(t => stats.tags[t] > 0).map(t => (
+                        <span key={t} className="db-tag-count" style={{ color: TAG_COLOR[t], borderColor: TAG_COLOR[t] }}>{t} {stats.tags[t]}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Value */}
+                <div className="deck-stat-card">
+                  <h3>Value</h3>
+                  <div className="db-value-row"><span>Deck value</span><span>{pricesLoading ? '…' : fmt$(analysis.deckValue)}</span></div>
+                  <div className="db-value-row"><span>To complete</span>
+                    <span style={{ color: analysis.missingCost > 0 ? 'var(--warn)' : 'var(--ok)' }}>
+                      {pricesLoading ? '…' : fmt$(analysis.missingCost)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Missing */}
+                {analysis.missing.length > 0 && (
+                  <div className="deck-stat-card">
+                    <h3>Missing</h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {analysis.missing.map(({ card, short, price }) => (
+                        <div key={card.id} className="deck-needed-row">
+                          <span style={{ color: 'var(--text-1)' }}>{short}× {card.name}</span>
+                          <span style={{ color: 'var(--warn)', fontFamily: 'var(--font-mono)' }}>{price != null ? fmt$(price * short) : '—'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            ))}
-
-            {/* Sideboard */}
-            {renderSection('Sideboard', analysis.sideboardCount, SIDEBOARD_MAX, analysis.sideboardRows.length
-              ? <div className="db-tile-grid">{analysis.sideboardRows.map(r => renderTile(r, 'sideboard'))}</div>
-              : <div className="db-zone-empty">Empty — move cards here with the <b>SB</b> button (max 8).</div>)}
-
-            {/* Bench */}
-            {renderSection('Bench', sumQty(active.bench), null, analysis.benchRows.length
-              ? <div className="db-tile-grid">{analysis.benchRows.map(r => renderTile(r, 'bench'))}</div>
-              : <div className="db-zone-empty">Empty — park potential cards here with the <b>Bench</b> button.</div>)}
 
             {/* Matches — legend vs legend, game W/L + dice-roll W/L */}
             {renderSection('Matches', matches.length || null, null, (
@@ -1123,130 +1172,140 @@ export default function DeckBuilder({
                 );
               })() : <div className="db-zone-empty">No changes yet — edits to this deck get logged here automatically.</div>
             ))}
-          </div>
+            </div>
+          )}
         </div>
-      )}
 
-      {/* ── Summary ── */}
+      {/* ── Deck panel ── */}
       {active && (
-        <aside className="db-summary">
-          <div className="deck-stat-card">
-            <h3>Deck Check</h3>
-            <ul className="db-checklist">
-              <li className={active.legendId ? 'ok' : 'bad'}>{active.legendId ? '✓' : '○'} Legend</li>
-              <li className={champion ? 'ok' : 'bad'}>{champion ? '✓' : '○'} Chosen champion</li>
-              <li className={analysis.mainCount === MAIN_TARGET ? 'ok' : 'bad'}>
-                {analysis.mainCount === MAIN_TARGET ? '✓' : '○'} Main deck {analysis.mainCount}/{MAIN_TARGET}
-              </li>
-              <li className={analysis.runeCount === RUNE_TARGET ? 'ok' : 'bad'}>
-                {analysis.runeCount === RUNE_TARGET ? '✓' : '○'} Runes {analysis.runeCount}/{RUNE_TARGET}
-              </li>
-              <li className={analysis.sideboardCount <= SIDEBOARD_MAX ? 'ok' : 'bad'}>
-                {analysis.sideboardCount <= SIDEBOARD_MAX ? '✓' : '✕'} Sideboard {analysis.sideboardCount}/{SIDEBOARD_MAX}
-              </li>
-            </ul>
-            {champion && (
-              <div className="db-champ-line">Champion: <b>{champion.name}</b></div>
-            )}
-            {matches.length > 0 && (
-              <div className="db-stat-record">
-                Record <b className="ok">{mWins}</b>–<b className="bad">{mLosses}</b>
-                <span className="db-stat-record-pct">{mWinPct}% · roll {mDiceWins}–{mDiceLosses}</span>
-              </div>
-            )}
-          </div>
+        <aside className="db-deck-panel">
+          {/* Deck check */}
+          <ul className="db-checklist">
+            <li className={active.legendId ? 'ok' : 'bad'}>{active.legendId ? '✓' : '○'} Legend</li>
+            <li className={champion ? 'ok' : 'bad'}>{champion ? '✓' : '○'} Chosen champion</li>
+            <li className={analysis.mainCount === MAIN_TARGET ? 'ok' : 'bad'}>
+              {analysis.mainCount === MAIN_TARGET ? '✓' : '○'} Main {analysis.mainCount}/{MAIN_TARGET}
+            </li>
+            <li className={analysis.runeCount === RUNE_TARGET ? 'ok' : 'bad'}>
+              {analysis.runeCount === RUNE_TARGET ? '✓' : '○'} Runes {analysis.runeCount}/{RUNE_TARGET}
+            </li>
+            <li className={analysis.sideboardCount <= SIDEBOARD_MAX ? 'ok' : 'bad'}>
+              {analysis.sideboardCount <= SIDEBOARD_MAX ? '✓' : '✕'} SB {analysis.sideboardCount}/{SIDEBOARD_MAX}
+            </li>
+          </ul>
 
-          {/* Energy curve */}
-          <div className="deck-stat-card">
-            <h3>Energy curve <span className="db-stat-sub">avg {stats.avgEnergy.toFixed(1)}</span></h3>
-            <div className="db-curve">
-              {stats.curve.map((n, e) => (
-                <div key={e} className="db-curve-col">
-                  <span className="db-curve-n">{n || ''}</span>
-                  <div className="db-curve-track"><div className="db-curve-bar" style={{ height: `${(n / stats.maxCurve) * 100}%` }} /></div>
-                  <span className="db-curve-x">{e === 7 ? '7+' : e}</span>
+          {/* Legend + Chosen Champion, side by side */}
+          <div className="db-panel-identity">
+            <div className="db-identity-slot">
+              <div className="db-identity-label">Legend</div>
+              {analysis.legend ? (
+                <div className="db-mini-card">
+                  <button className="db-mini-img" onClick={() => onOpenModal?.(analysis.legend)} title="View details">
+                    {analysis.legend.media?.image_url
+                      ? <img src={analysis.legend.media.image_url} alt={analysis.legend.name} loading="lazy" />
+                      : <span className="db-line-ph">{analysis.legend.name.slice(0, 2)}</span>}
+                  </button>
+                  <div className="db-mini-info">
+                    <span className="db-mini-name">{analysis.legend.name}</span>
+                    <span className="db-legend-domains">
+                      {legendDomains(analysis.legend).map(dm => (
+                        <span key={dm} className="db-domain-pill" style={{ color: `var(--d-${dm.toLowerCase()})` }}>{dm}</span>
+                      ))}
+                    </span>
+                    <button className="btn ghost danger db-mini-remove" onClick={clearLegend}>Remove</button>
+                  </div>
                 </div>
-              ))}
+              ) : (
+                <div className="db-identity-empty">Click a <b>Legend</b> in the library — its domains set up your rune deck.</div>
+              )}
+            </div>
+
+            <div className="db-identity-slot">
+              <div className="db-identity-label">Chosen Champion</div>
+              {championOptions.length === 0 ? (
+                <div className="db-identity-empty">Add a <b>Champion</b> to your main deck, then pick it here.</div>
+              ) : (
+                <>
+                  <select className="db-champ-select" value={champion?.id ?? ''} onChange={e => chooseChampion(e.target.value)}>
+                    <option value="">— Select chosen champion —</option>
+                    {championOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  {champion && (
+                    <div className="db-mini-card">
+                      <button className="db-mini-img" onClick={() => onOpenModal?.(champion)} title="View details">
+                        {champion.media?.image_url
+                          ? <img src={champion.media.image_url} alt={champion.name} loading="lazy" />
+                          : <span className="db-line-ph">{champion.name.slice(0, 2)}</span>}
+                      </button>
+                      <div className="db-mini-info"><span className="db-mini-name">{champion.name}</span></div>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
 
-          {/* Composition */}
-          <div className="deck-stat-card">
-            <h3>Composition</h3>
-            <div className="db-stat-rows">
-              {[['Champions', 'Champion'], ['Units', 'Unit'], ['Spells', 'Spell'], ['Gear', 'Gear'], ['Battlefields', 'Battlefield']]
-                .filter(([, k]) => stats.types[k] > 0)
-                .map(([label, k]) => (
-                  <div key={k} className="db-stat-row"><span>{label}</span><span>{stats.types[k]}</span></div>
-                ))}
-              {analysis.mainCount === 0 && <div className="db-stat-muted">No cards yet.</div>}
-            </div>
+          {/* Deck list, grouped by zone — each section collapsible */}
+          <div className="db-line-group">
+            {zoneHead('main', 'Main Deck',
+              <span className={`db-section-count${analysis.mainCount > MAIN_TARGET ? ' over' : ''}`}>{analysis.mainCount} / {MAIN_TARGET}</span>)}
+            {!collapsed.main && (analysis.mainRows.length
+              ? <div className="db-mini-grid">{renderZoneTiles(analysis.mainRows, 'main')}</div>
+              : <div className="db-zone-empty">Empty — add cards from the library. Set a chosen champion from a champion in your deck.</div>)}
           </div>
 
-          {/* Domains */}
-          {domainEntries.length > 0 && (
-            <div className="deck-stat-card">
-              <h3>Domains</h3>
-              <div className="db-stat-rows">
-                {domainEntries.map(([dm, n]) => (
-                  <div key={dm} className="db-domain-stat">
-                    <span className="db-domain-name" style={{ color: `var(--d-${dm.toLowerCase()})` }}>
+          {analysis.battlefieldRows.length > 0 && (
+            <div className="db-line-group">
+              {zoneHead('battlefields', 'Battlefields',
+                <span className="db-section-count">{analysis.battlefieldRows.reduce((n, r) => n + r.qty, 0)}</span>)}
+              {!collapsed.battlefields && <div className="db-mini-grid">{renderZoneTiles(analysis.battlefieldRows, 'main')}</div>}
+            </div>
+          )}
+
+          <div className="db-line-group">
+            {zoneHead('runes', 'Rune Deck',
+              <span className={`db-section-count${analysis.runeCount > RUNE_TARGET ? ' over' : ''}`}>{analysis.runeCount} / {RUNE_TARGET}</span>)}
+            {!collapsed.runes && (!analysis.legend ? (
+              <div className="db-zone-empty">Add a legend to set up runes.</div>
+            ) : (
+              <div className="db-rune-deck">
+                {[...new Set([...legendDomains(analysis.legend), ...Object.keys(active.runes)])].map(dm => (
+                  <div key={dm} className="db-rune-row">
+                    <span className="db-rune-name" style={{ color: `var(--d-${dm.toLowerCase()})` }}>
                       <span className="db-rune-dot" style={{ background: `var(--d-${dm.toLowerCase()})` }} />{dm}
                     </span>
-                    <div className="db-domain-track">
-                      <span className="db-domain-fill" style={{ width: `${(n / maxDomain) * 100}%`, background: `var(--d-${dm.toLowerCase()})` }} />
+                    <div className="stepper">
+                      <button onClick={() => adjustRune(dm, -1)} disabled={!active.runes[dm]}>−</button>
+                      <span className="val">{active.runes[dm] ?? 0}</span>
+                      <button onClick={() => adjustRune(dm, 1)}>+</button>
                     </div>
-                    <span className="db-domain-n">{n}</span>
                   </div>
                 ))}
+                <button className="btn ghost" style={{ marginTop: 4 }} onClick={resetRunesFromLegend}>↻ Reset from legend</button>
               </div>
-            </div>
-          )}
-
-          {/* Tags */}
-          {hasTags && (
-            <div className="deck-stat-card">
-              <h3>Tags</h3>
-              <div className="db-tag-counts">
-                {TAGS.filter(t => stats.tags[t] > 0).map(t => (
-                  <span key={t} className="db-tag-count" style={{ color: TAG_COLOR[t], borderColor: TAG_COLOR[t] }}>{t} {stats.tags[t]}</span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="deck-stat-card">
-            <h3>Value</h3>
-            <div className="db-value-row"><span>Deck value</span><span>{pricesLoading ? '…' : fmt$(analysis.deckValue)}</span></div>
-            <div className="db-value-row"><span>To complete</span>
-              <span style={{ color: analysis.missingCost > 0 ? 'var(--warn)' : 'var(--ok)' }}>
-                {pricesLoading ? '…' : fmt$(analysis.missingCost)}
-              </span>
-            </div>
+            ))}
           </div>
 
-          {analysis.missing.length > 0 && (
-            <div className="deck-stat-card">
-              <h3>Missing</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {analysis.missing.map(({ card, short, price }) => (
-                  <div key={card.id} className="deck-needed-row">
-                    <span style={{ color: 'var(--text-1)' }}>{short}× {card.name}</span>
-                    <span style={{ color: 'var(--warn)', fontFamily: 'var(--font-mono)' }}>{price != null ? fmt$(price * short) : '—'}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          <div className="db-line-group">
+            {zoneHead('sideboard', 'Sideboard',
+              <span className={`db-section-count${analysis.sideboardCount > SIDEBOARD_MAX ? ' over' : ''}`}>{analysis.sideboardCount} / {SIDEBOARD_MAX}</span>)}
+            {!collapsed.sideboard && (analysis.sideboardRows.length
+              ? <div className="db-mini-grid">{renderZoneTiles(analysis.sideboardRows, 'sideboard')}</div>
+              : <div className="db-zone-empty">Empty — move cards here with a card's <b>SB</b> button (max {SIDEBOARD_MAX}).</div>)}
+          </div>
 
-          <div className="deck-stat-card">
-            <h3>Export</h3>
-            <button className="btn" style={{ width: '100%', justifyContent: 'center' }} onClick={copyDecklist}>
-              {copied ? '✓ Copied decklist' : 'Copy decklist'}
-            </button>
-            <button className="btn" style={{ width: '100%', justifyContent: 'center', marginTop: 6 }} onClick={exportImage} disabled={imgBusy}>
-              {imgBusy ? 'Generating image…' : '🖼 Export image'}
-            </button>
+          <div className="db-line-group">
+            {zoneHead('bench', 'Bench',
+              <span className="db-section-count">{sumQty(active.bench)}</span>)}
+            {!collapsed.bench && (analysis.benchRows.length
+              ? <div className="db-mini-grid">{renderZoneTiles(analysis.benchRows, 'bench')}</div>
+              : <div className="db-zone-empty">Empty — park potential cards here with a card's <b>Bench</b> button.</div>)}
+          </div>
+
+          {/* Export */}
+          <div className="db-panel-export">
+            <button className="btn" onClick={copyDecklist}>{copied ? '✓ Copied decklist' : 'Copy decklist'}</button>
+            <button className="btn" onClick={exportImage} disabled={imgBusy}>{imgBusy ? 'Generating image…' : '🖼 Export image'}</button>
           </div>
         </aside>
       )}

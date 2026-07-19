@@ -82,7 +82,28 @@
 .decks-modebar { display: flex; }
 
 /* ---- Deck Builder ---- */
-.db-wrap { display: grid; grid-template-columns: 190px 1fr 250px; gap: 16px; align-items: start; }
+/* Even 50/50 split — library on the left, deck panel on the right. */
+.db-wrap { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+
+/* Deck gallery (landing) — deck cards with legend art + New deck */
+.db-gallery { display: flex; flex-direction: column; gap: 16px; }
+.db-gallery-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.db-gallery-title { font-size: 18px; font-weight: 700; color: var(--text-0); margin: 0; }
+.db-gallery-actions { display: flex; gap: 8px; }
+.db-gallery-empty { padding: 44px 16px; text-align: center; font-size: 13px; color: var(--text-3); border: 1px dashed var(--border-0); border-radius: var(--radius-lg); }
+.db-gallery-empty b { color: var(--text-1); }
+.db-gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(172px, 1fr)); gap: 14px; }
+.db-gallery-card { display: flex; flex-direction: column; padding: 0; background: var(--bg-1); border: 1px solid var(--border-0); border-radius: var(--radius-lg); overflow: hidden; text-align: left; cursor: pointer; }
+.db-gallery-card:hover { border-color: var(--accent-line); background: var(--bg-2); }
+.db-gallery-art { position: relative; display: block; aspect-ratio: 5 / 7; background: var(--bg-2); overflow: hidden; }
+.db-gallery-art img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
+.db-gallery-ph { display: grid; place-items: center; height: 100%; font-size: 12px; color: var(--text-3); }
+.db-gallery-count { position: absolute; bottom: 6px; right: 6px; font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; background: oklch(0 0 0 / 0.7); color: var(--text-0); border-radius: 5px; padding: 1px 6px; }
+.db-gallery-info { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; min-width: 0; }
+.db-gallery-name { font-size: 13px; font-weight: 600; color: var(--text-0); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.db-gallery-sub { font-size: 11px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.db-back { height: 34px; padding: 0 12px; background: var(--bg-1); border: 1px solid var(--border-0); border-radius: 8px; color: var(--text-1); font-size: 12.5px; font-weight: 600; flex-shrink: 0; }
+.db-back:hover { color: var(--text-0); border-color: var(--accent-line); }
 .db-sidebar { display: flex; flex-direction: column; gap: 10px; }
 .db-new-row { display: flex; gap: 6px; }
 .db-new { flex: 1; justify-content: center; }
@@ -107,22 +128,50 @@
 .db-name-input { flex: 1; height: 34px; background: var(--bg-1); border: 1px solid var(--border-0); border-radius: 8px; padding: 0 12px; color: var(--text-0); font-size: 15px; font-weight: 600; outline: none; }
 .db-name-input:focus { border-color: var(--accent-line); background: var(--bg-2); }
 .db-head-actions { display: flex; gap: 6px; }
-.db-add { position: relative; }
-.db-search { width: 100%; height: 32px; background: var(--bg-1); border: 1px solid var(--border-0); border-radius: 8px; padding: 0 12px; color: var(--text-0); font-size: 13px; outline: none; }
-.db-search:focus { border-color: var(--accent-line); background: var(--bg-2); }
-.db-results { position: absolute; z-index: 20; top: 36px; left: 0; right: 0; max-height: 320px; overflow-y: auto; background: var(--bg-2); border: 1px solid var(--border-1); border-radius: 8px; box-shadow: var(--shadow-2); }
-.db-result { display: grid; grid-template-columns: 34px 1fr auto auto; align-items: center; gap: 10px; width: 100%; padding: 6px 12px; background: transparent; border: none; border-bottom: 1px solid var(--border-0); color: var(--text-1); text-align: left; }
-.db-result:last-child { border-bottom: none; }
-.db-result:hover { background: var(--bg-3); color: var(--text-0); }
-.db-result-thumb { width: 34px; height: 48px; border-radius: 3px; overflow: hidden; background: var(--bg-1); border: 1px solid var(--border-0); }
-.db-result-thumb img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
-.db-result-name { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.db-result-meta { font-size: 10.5px; color: var(--text-3); font-family: var(--font-mono); }
-.db-result-add { font-size: 16px; color: var(--accent); }
+/* View tabs (Build / Details) */
+.db-view-tabs { display: flex; gap: 4px; }
+.db-view-tab { height: 30px; padding: 0 16px; background: var(--bg-1); border: 1px solid var(--border-0); border-radius: 8px; color: var(--text-2); font-size: 12.5px; font-weight: 600; }
+.db-view-tab:hover { color: var(--text-0); background: var(--bg-2); }
+.db-view-tab.active { border-color: var(--accent-line); background: var(--accent-soft); color: var(--text-0); }
+
+/* Card library (browse & click to add) */
+.db-library { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.db-lib-step { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-2); }
+.db-lib-step-n { font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-0); background: var(--accent-soft); border: 1px solid var(--accent-line); border-radius: 5px; padding: 2px 7px; }
+.db-lib-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.db-lib-filter { flex: 1; min-width: 180px; height: 32px; background: var(--bg-1); border: 1px solid var(--border-0); border-radius: 8px; padding: 0 12px; color: var(--text-0); font-size: 13px; outline: none; }
+.db-lib-filter:focus { border-color: var(--accent-line); background: var(--bg-2); }
+.db-lib-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.db-lib-chip { height: 26px; padding: 0 10px; background: var(--bg-1); border: 1px solid var(--border-0); border-radius: 999px; color: var(--text-2); font-size: 11.5px; }
+.db-lib-chip:hover { color: var(--text-0); background: var(--bg-2); }
+.db-lib-chip.active { border-color: var(--accent-line); background: var(--accent-soft); color: var(--text-0); }
+.db-lib-chip.clear { color: var(--text-3); }
+.db-lib-total { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); }
+.db-lib-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.db-lib-tile { display: flex; flex-direction: column; gap: 5px; padding: 0; background: none; border: none; text-align: left; cursor: pointer; }
+.db-lib-tile:disabled { cursor: default; }
+.db-lib-art { position: relative; aspect-ratio: 5 / 7; border-radius: 6px; overflow: hidden; background: var(--bg-2); border: 1px solid var(--border-0); display: block; }
+.db-lib-art img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; }
+.db-lib-tile:hover:not(:disabled) .db-lib-art { border-color: var(--accent-line); }
+.db-lib-tile.at-cap .db-lib-art { opacity: 0.45; }
+.db-lib-tile.in-deck .db-lib-art { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-soft); }
+.db-lib-ph { display: grid; place-items: center; height: 100%; padding: 6px; font-size: 10px; color: var(--text-3); text-align: center; }
+.db-lib-count { position: absolute; top: 4px; left: 4px; font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; background: var(--accent); color: #0c0c12; border-radius: 5px; padding: 1px 5px; }
+.db-lib-add { position: absolute; inset: auto 4px 4px auto; width: 22px; height: 22px; display: grid; place-items: center; font-size: 15px; line-height: 1; background: oklch(0 0 0 / 0.7); color: var(--text-0); border-radius: 6px; opacity: 0; transition: opacity 0.1s; }
+.db-lib-tile:hover:not(:disabled) .db-lib-add { opacity: 1; }
+.db-lib-name { font-size: 11px; color: var(--text-1); line-height: 1.25; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.db-lib-meta { font-size: 9.5px; color: var(--text-3); font-family: var(--font-mono); }
+
 .db-contents { display: flex; flex-direction: column; gap: 14px; }
+.db-stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
 .db-section { background: var(--bg-1); border: 1px solid var(--border-0); border-radius: var(--radius-lg); overflow: hidden; }
 .db-section-head { display: flex; align-items: center; justify-content: space-between; padding: 7px 12px 7px 14px; background: linear-gradient(90deg, var(--accent-soft), transparent 70%), var(--bg-2); border-bottom: 1px solid var(--border-0); border-left: 3px solid var(--accent); font-size: 11.5px; font-weight: 600; color: var(--text-0); }
 .db-section-count { font-family: var(--font-mono); color: var(--text-3); }
+/* Collapsible deck-panel section headers */
+.db-section-toggle { width: 100%; border: none; border-left: 3px solid var(--accent); border-bottom: 1px solid var(--border-0); cursor: pointer; font: inherit; }
+.db-section-toggle:hover { filter: brightness(1.15); }
+.db-section-title { display: inline-flex; align-items: center; gap: 6px; }
+.db-chevron { display: inline-block; width: 9px; font-size: 9px; color: var(--text-3); }
 .db-card-row { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 10px; padding: 5px 12px; border-bottom: 1px solid var(--border-0); }
 .db-card-row:last-child { border-bottom: none; }
 .db-card-row.short { background: oklch(0.78 0.14 80 / 0.05); }
@@ -132,7 +181,69 @@
 .db-own { font-family: var(--font-mono); font-size: 11px; color: var(--ok); }
 .db-own.short { color: var(--warn); }
 .db-card-price { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3); width: 48px; text-align: right; }
-.db-summary { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 0; }
+/* Right deck panel — legend/champ + compact zone lists */
+.db-deck-panel { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 0; min-height: 0; max-height: calc(100vh - var(--header-h, 56px) - var(--subnav-h, 44px) - 32px); overflow-y: auto; padding-right: 4px; }
+/* Keep sections at natural height so the panel scrolls instead of squishing them */
+.db-deck-panel > * { flex-shrink: 0; }
+.db-deck-panel > .db-checklist { flex-flow: row wrap; gap: 4px 12px; background: var(--bg-1); border: 1px solid var(--border-0); border-radius: var(--radius-lg); padding: 10px 12px; }
+.db-panel-identity { display: flex; gap: 12px; background: var(--bg-1); border: 1px solid var(--border-0); border-radius: var(--radius-lg); padding: 12px; }
+.db-panel-identity .db-identity-slot { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.db-mini-card { min-width: 0; }
+.db-mini-name { overflow: hidden; text-overflow: ellipsis; }
+.db-mini-card { display: flex; gap: 10px; }
+.db-mini-img { position: relative; width: 74px; flex-shrink: 0; aspect-ratio: 5 / 7; border-radius: 7px; overflow: hidden; background: var(--bg-2); border: 1px solid var(--border-0); padding: 0; }
+.db-mini-img img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
+.db-mini-img:hover { border-color: var(--accent-line); }
+.db-mini-info { display: flex; flex-direction: column; gap: 8px; justify-content: center; min-width: 0; }
+.db-mini-name { font-size: 13px; font-weight: 600; color: var(--text-0); }
+.db-mini-remove { align-self: flex-start; }
+
+/* Deck-zone card tiles — one small image per copy; 10 per row (a 40-card
+   main deck lays out as 10×4). Tiles size to fit. */
+.db-mini-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; padding: 8px; }
+.db-mini-tile { position: relative; }
+.db-mini-tile-art { position: relative; display: block; width: 100%; aspect-ratio: 5 / 7; border-radius: 4px; overflow: hidden; background: var(--bg-2); border: 1px solid var(--border-0); padding: 0; }
+.db-mini-tile-art img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
+.db-mini-tile-art:hover { border-color: var(--accent-line); }
+.db-mini-tile.short .db-mini-tile-art { border-color: oklch(0.78 0.14 80 / 0.6); }
+.db-mini-tile.chosen .db-mini-tile-art { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.db-mini-foil { position: absolute; top: 2px; right: 2px; font-size: 9px; color: var(--warn); }
+.db-mini-star { position: absolute; top: 2px; left: 2px; font-size: 9px; color: var(--accent); background: oklch(0 0 0 / 0.72); border-radius: 3px; padding: 0 2px; }
+.db-mini-tag { position: absolute; bottom: 2px; left: 2px; width: 8px; height: 8px; border-radius: 2px; }
+.db-mini-need { position: absolute; bottom: 0; left: 0; right: 0; font-family: var(--font-mono); font-size: 8px; text-align: center; background: oklch(0.78 0.14 80 / 0.9); color: #1a1400; font-weight: 700; }
+/* Hover overlay: pointer-events pass through to the art except on the controls */
+.db-mini-controls { position: absolute; inset: 0; display: none; flex-wrap: wrap; align-content: center; justify-content: center; gap: 2px; padding: 3px; background: oklch(0 0 0 / 0.6); border-radius: 4px; pointer-events: none; }
+.db-mini-tile:hover .db-mini-controls { display: flex; }
+.db-mini-controls button, .db-mini-controls select { pointer-events: auto; }
+.db-mini-controls button { height: 18px; min-width: 18px; padding: 0 3px; background: var(--bg-2); border: 1px solid var(--border-0); border-radius: 4px; color: var(--text-1); font-size: 9px; font-weight: 600; }
+.db-mini-controls button:hover { color: var(--text-0); border-color: var(--accent-line); }
+.db-mini-rm { color: var(--miss) !important; }
+.db-mini-controls .db-tag-select { height: 18px; flex: 1 1 100%; font-size: 9px; padding: 0 2px; }
+
+/* Compact deck-list rows */
+.db-line-group { background: var(--bg-1); border: 1px solid var(--border-0); border-radius: var(--radius-lg); overflow: hidden; }
+.db-line { position: relative; display: grid; grid-template-columns: auto 26px 1fr auto; align-items: center; gap: 8px; padding: 4px 10px; border-bottom: 1px solid var(--border-0); }
+.db-line:last-child { border-bottom: none; }
+.db-line.short { background: oklch(0.78 0.14 80 / 0.06); }
+.db-line.chosen { box-shadow: inset 3px 0 0 var(--accent); }
+.db-line-step { flex-shrink: 0; }
+.db-line-thumb { width: 26px; height: 36px; border-radius: 3px; overflow: hidden; background: var(--bg-2); border: 1px solid var(--border-0); padding: 0; }
+.db-line-thumb img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
+.db-line-thumb:hover { border-color: var(--accent-line); }
+.db-line-ph { display: grid; place-items: center; height: 100%; font-size: 9px; color: var(--text-3); }
+.db-line-name { font-size: 12px; color: var(--text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.db-line-champ { color: var(--accent); margin-left: 4px; }
+.db-line-tag { font-family: var(--font-mono); font-size: 9px; font-weight: 700; text-transform: uppercase; color: #0c0c12; padding: 1px 5px; border-radius: 4px; }
+.db-line-need { font-family: var(--font-mono); font-size: 9.5px; color: var(--warn); white-space: nowrap; }
+.db-line-draw { font-family: var(--font-mono); font-size: 9.5px; color: var(--text-3); cursor: help; }
+.db-line-controls { display: none; grid-column: 1 / -1; gap: 4px; align-items: center; padding: 2px 0 4px 0; }
+.db-line:hover .db-line-controls { display: flex; }
+.db-line-controls button { height: 22px; padding: 0 7px; background: var(--bg-2); border: 1px solid var(--border-0); border-radius: 5px; color: var(--text-2); font-size: 10.5px; }
+.db-line-controls button:hover { color: var(--text-0); border-color: var(--accent-line); }
+.db-line-controls .db-tag-select { height: 22px; }
+
+.db-panel-export { display: flex; flex-direction: column; gap: 6px; }
+.db-panel-export .btn { width: 100%; justify-content: center; }
 
 /* Champion feature — large art for the deck's Legend / Champion identity */
 .db-champion-section { background: var(--bg-1); border: 1px solid var(--border-0); border-radius: var(--radius-lg); overflow: hidden; }
