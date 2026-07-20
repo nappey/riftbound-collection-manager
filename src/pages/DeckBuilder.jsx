@@ -3,6 +3,7 @@ import { isSingleton, isAlwaysFoil } from '../utils/playset';
 import { ownedTotal, unitPrice, fmt$, PROMO_FOLD_SETS } from '../utils/analysis';
 import { exportDeckImage } from '../utils/deckImage';
 import { buildNameMap, deckFromImport } from '../utils/parseDeckList';
+import { indexPrintings, printingLabel } from '../utils/printings';
 
 const IMPORT_PLACEHOLDER = `Paste a decklist (works with this app's export or
 plain text from other sites):
@@ -24,7 +25,10 @@ Sideboard:
 // Deck shape (v2):
 // { id, name, updatedAt, legendId, championId,
 //   main: {cardId:qty}, sideboard: {cardId:qty}, bench: {cardId:qty},
-//   runes: {domain:count}, tags: {cardId:label} }
+//   runes: {domain:count}, tags: {cardId:label}, arts: {cardId:printingId} }
+//
+// `arts` is purely cosmetic — it picks which printing's image renders for a card.
+// Deck contents, pricing and ownership always track the card id in the zone maps.
 
 const MAIN_TARGET = 40;
 const SIDEBOARD_MAX = 10;
@@ -36,6 +40,11 @@ const TAGS = ['core', 'amazing', 'flex', 'bad'];
 // except 'Champion' which is a supertype).
 const LIB_TYPES = ['Legend', 'Champion', 'Unit', 'Spell', 'Gear', 'Rune', 'Battlefield'];
 const TAG_COLOR = { core: 'var(--accent)', amazing: 'var(--ok)', flex: 'var(--warn)', bad: 'var(--miss)' };
+
+// Art popover footprint, in sync with .db-art-pop in pages.css — the popover is
+// positioned fixed, so its placement has to be computed rather than inherited.
+const POP_W = 232;
+const POP_MAX_H = 320;
 
 const uid = () => `deck-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const sumQty = (m) => Object.values(m || {}).reduce((n, q) => n + q, 0);
@@ -52,6 +61,7 @@ const LOG_CATS = {
   champion: { label: 'Champion', color: 'oklch(0.81 0.16 85)'  }, // amber
   rune:     { label: 'Rune',     color: 'oklch(0.74 0.14 195)' }, // cyan
   tag:      { label: 'Tag',      color: 'oklch(0.72 0.18 340)' }, // magenta
+  art:      { label: 'Art',      color: 'oklch(0.77 0.15 120)' }, // lime
   import:   { label: 'Import',   color: 'oklch(0.72 0.17 45)'  }, // orange
   other:    { label: 'Other',    color: 'oklch(0.66 0.04 282)' }, // neutral
 };
@@ -111,13 +121,14 @@ function prepopulateRunes(domains) {
 const newDeckObj = () => ({
   id: uid(), name: 'Untitled Deck', updatedAt: Date.now(),
   legendId: null, championId: null,
-  main: {}, sideboard: {}, bench: {}, runes: {}, tags: {}, notes: '', noteLog: [], log: [], matches: [], siding: [],
+  main: {}, sideboard: {}, bench: {}, runes: {}, tags: {}, arts: {},
+  notes: '', noteLog: [], log: [], matches: [], siding: [],
 });
 
 // Ensure a deck has all v2 fields, migrating an old { cards } deck if needed.
 function normalizeDeck(deck, cardById) {
   const d = {
-    legendId: null, championId: null, main: {}, sideboard: {}, bench: {}, runes: {}, tags: {},
+    legendId: null, championId: null, main: {}, sideboard: {}, bench: {}, runes: {}, tags: {}, arts: {},
     notes: '', noteLog: [], log: [], matches: [], siding: [],
     ...deck,
   };
@@ -157,6 +168,9 @@ export default function DeckBuilder({
   const [sidingCopied, setSidingCopied] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState('');
+  // Open art popover: { token, left, top, bottom } — the anchor's viewport rect,
+  // since the popover is positioned fixed to escape the deck panel's clipping.
+  const [artPicker, setArtPicker] = useState(null);
   const [logCats, setLogCats] = useState([]); // active change-log filters ([] = all)
   const toggleLogCat = (c) => setLogCats(prev => prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c]);
 
@@ -189,6 +203,25 @@ export default function DeckBuilder({
   }, [allCards]);
 
   const nameMap = useMemo(() => buildNameMap(allCards), [allCards]);
+
+  // Every printing of every card, grouped by gameplay identity — collapses the
+  // library to one tile per card and backs the per-card art picker.
+  const printings = useMemo(() => indexPrintings(allCards), [allCards]);
+
+  // Any click outside an open art popover dismisses it; the picker's own
+  // controls stop propagation so they don't close it out from under themselves.
+  // Scrolling closes it too — it's pinned to viewport coordinates, so it would
+  // otherwise drift away from the card it belongs to.
+  useEffect(() => {
+    if (!artPicker) return;
+    const close = () => setArtPicker(null);
+    document.addEventListener('click', close);
+    window.addEventListener('scroll', close, true);
+    return () => {
+      document.removeEventListener('click', close);
+      window.removeEventListener('scroll', close, true);
+    };
+  }, [artPicker]);
 
   // Live preview of a pasted decklist — same parser the Deck Check uses.
   const importPreview = useMemo(
@@ -363,6 +396,34 @@ export default function DeckBuilder({
     });
   }
 
+  // Pick which printing's art represents a card in this deck. Passing the base
+  // printing (or null) clears the override back to the standard art.
+  function setArt(cardId, printingId) {
+    mutate(active.id, d => {
+      const arts = { ...d.arts };
+      const name = cardById.get(cardId)?.name ?? cardId;
+      const base = printings.get(cardId)?.base;
+      let text;
+      if (!printingId || printingId === base?.id) {
+        if (!(cardId in arts)) return d;
+        delete arts[cardId];
+        text = `Reset ${name} to standard art`;
+      } else {
+        if (arts[cardId] === printingId) return d;
+        arts[cardId] = printingId;
+        text = `${name} art → ${printingLabel(cardById.get(printingId))}`;
+      }
+      return withLog({ ...d, arts }, text, 'art');
+    });
+  }
+
+  // The printing whose art should render for a card in this deck — the chosen
+  // alternate if there is one, otherwise the card itself.
+  function artOf(card) {
+    const id = card && active?.arts?.[card.id];
+    return (id && cardById.get(id)) || card;
+  }
+
   function setNotes(value) {
     mutate(active.id, d => ({ ...d, notes: value })); // draft edits aren't logged
   }
@@ -447,6 +508,10 @@ export default function DeckBuilder({
         .every(d => legendSet.has(d));
     return allCards
       .filter(c => {
+        // One tile per card: alt arts, premiums and promo reprints are separate
+        // cards in the API, so keep only each group's canonical printing. Their
+        // art stays reachable through the deck panel's art picker.
+        if (printings.get(c.id)?.base !== c) return false;
         const isLegend = c.classification?.type === 'Legend';
         if (!hasLegend) return isLegend && matchQ(c);       // step 1 — legends only
         if (isLegend) return false;                         // step 2 — everything but legends
@@ -584,8 +649,16 @@ export default function DeckBuilder({
   async function exportImage() {
     if (!active || !analysis) return;
     setImgBusy(true);
+    // Export the art the deck actually shows, but keep each card's own name —
+    // the chosen printing carries a variant suffix we don't want on the image.
+    const asShown = (card) => card && { ...card, media: artOf(card).media };
     try {
-      await exportDeckImage({ deckName: active.name, legend: analysis.legend, champion, mainRows: analysis.mainRows });
+      await exportDeckImage({
+        deckName: active.name,
+        legend: asShown(analysis.legend),
+        champion: asShown(champion),
+        mainRows: analysis.mainRows.map(r => ({ ...r, card: asShown(r.card) })),
+      });
     } catch (e) {
       window.alert(`Image export failed — a card image blocked the canvas. ${e?.message ?? ''}`);
     } finally {
@@ -607,23 +680,85 @@ export default function DeckBuilder({
     setTimeout(() => setSidingCopied(false), 1800);
   }
 
+  // ── art picker ────────────────────────────────────────────────
+  // A paintbrush badge on cards that exist in more than one printing; clicking
+  // it opens a thumbnail popover to pick which art the deck shows.
+  // `token` identifies which badge is open — a playset renders the same card as
+  // several tiles, and each needs its own open/closed state.
+  function renderArtPicker(card, place, token = card.id) {
+    const group = printings.get(card.id);
+    if (!group || group.printings.length < 2) return null;
+    const open = artPicker?.token === token;
+    const currentId = active.arts[card.id] ?? group.base.id;
+    // Prefer opening upward; near the top of the viewport there's no room, so
+    // drop below the badge instead.
+    const flipDown = open && artPicker.top < POP_MAX_H;
+    return (
+      <div className={`db-art ${place}`}>
+        <button
+          className={`db-art-btn${open ? ' open' : ''}${active.arts[card.id] ? ' custom' : ''}`}
+          title={`Choose art — ${group.printings.length} printings`}
+          onClick={e => {
+            e.stopPropagation();
+            if (open) { setArtPicker(null); return; }
+            const r = e.currentTarget.getBoundingClientRect();
+            setArtPicker({ token, left: r.right, top: r.top, bottom: r.bottom });
+          }}
+        >
+          🖌
+        </button>
+        {open && (
+          <div
+            className="db-art-pop"
+            onClick={e => e.stopPropagation()}
+            style={{
+              left: Math.max(8, Math.min(artPicker.left - POP_W, window.innerWidth - POP_W - 8)),
+              ...(flipDown
+                ? { top: artPicker.bottom + 6 }
+                : { bottom: window.innerHeight - artPicker.top + 6 }),
+            }}
+          >
+            <div className="db-art-pop-head">{card.name}</div>
+            <div className="db-art-pop-grid">
+              {group.printings.map(p => (
+                <button
+                  key={p.id}
+                  className={`db-art-opt${p.id === currentId ? ' active' : ''}`}
+                  title={p.name}
+                  onClick={() => { setArt(card.id, p.id); setArtPicker(null); }}
+                >
+                  {p.media?.image_url
+                    ? <img src={p.media.image_url} alt="" loading="lazy" />
+                    : <span className="db-lib-ph">{p.name}</span>}
+                  <span className="db-art-opt-label">{printingLabel(p)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   // ── deck-zone card tile (one tile per physical copy) ─────────────
   // Each copy of a card shows as its own small image, so a 3-of appears as
   // three cards. Remove / move / tag controls appear on hover.
   function renderCopyTile(card, zone, key, missing) {
     const chosen = active.championId === card.id;
     const tag = active.tags[card.id];
+    const art = artOf(card);
     return (
       <div key={key} className={`db-mini-tile${missing ? ' short' : ''}${chosen ? ' chosen' : ''}`}>
         <button className="db-mini-tile-art" onClick={() => onOpenModal?.(card)} title={card.name}>
-          {card.media?.image_url
-            ? <img src={card.media.image_url} alt={card.name} loading="lazy" />
+          {art.media?.image_url
+            ? <img src={art.media.image_url} alt={card.name} loading="lazy" />
             : <span className="db-lib-ph">{card.name}</span>}
           {isAlwaysFoil(card) && <span className="db-mini-foil">✦</span>}
           {chosen && <span className="db-mini-star">★</span>}
           {tag && <span className="db-mini-tag" style={{ background: TAG_COLOR[tag] }} />}
           {missing && <span className="db-mini-need">need</span>}
         </button>
+        {renderArtPicker(card, 'tile', key)}
         <div className="db-mini-controls">
           <button className="db-mini-rm" title="Remove this copy" onClick={() => adjustZone(zone, card.id, -1)}>−</button>
           {zone !== 'main' && <button title="To main deck" onClick={() => moveCard(card.id, zone, 'main')}>M</button>}
@@ -811,6 +946,8 @@ export default function DeckBuilder({
               const legend = nd.legendId ? cardById.get(nd.legendId) : null;
               const champ = nd.championId ? cardById.get(nd.championId) : null;
               const count = sumQty(nd.main);
+              // Gallery art follows the deck's chosen legend printing.
+              const legendArt = legend && (cardById.get(nd.arts?.[legend.id]) ?? legend);
               return (
                 <button
                   key={d.id}
@@ -819,8 +956,8 @@ export default function DeckBuilder({
                   title={`Open ${d.name}`}
                 >
                   <span className="db-gallery-art">
-                    {legend?.media?.image_url
-                      ? <img src={legend.media.image_url} alt={legend.name} loading="lazy" />
+                    {legendArt?.media?.image_url
+                      ? <img src={legendArt.media.image_url} alt={legend.name} loading="lazy" />
                       : <span className="db-gallery-ph">No legend yet</span>}
                     <span className="db-gallery-count">{count} cards</span>
                   </span>
@@ -1201,10 +1338,11 @@ export default function DeckBuilder({
               {analysis.legend ? (
                 <div className="db-mini-card">
                   <button className="db-mini-img" onClick={() => onOpenModal?.(analysis.legend)} title="View details">
-                    {analysis.legend.media?.image_url
-                      ? <img src={analysis.legend.media.image_url} alt={analysis.legend.name} loading="lazy" />
+                    {artOf(analysis.legend).media?.image_url
+                      ? <img src={artOf(analysis.legend).media.image_url} alt={analysis.legend.name} loading="lazy" />
                       : <span className="db-line-ph">{analysis.legend.name.slice(0, 2)}</span>}
                   </button>
+                  {renderArtPicker(analysis.legend, 'slot', 'legend')}
                   <div className="db-mini-info">
                     <span className="db-mini-name">{analysis.legend.name}</span>
                     <span className="db-legend-domains">
@@ -1233,10 +1371,11 @@ export default function DeckBuilder({
                   {champion && (
                     <div className="db-mini-card">
                       <button className="db-mini-img" onClick={() => onOpenModal?.(champion)} title="View details">
-                        {champion.media?.image_url
-                          ? <img src={champion.media.image_url} alt={champion.name} loading="lazy" />
+                        {artOf(champion).media?.image_url
+                          ? <img src={artOf(champion).media.image_url} alt={champion.name} loading="lazy" />
                           : <span className="db-line-ph">{champion.name.slice(0, 2)}</span>}
                       </button>
+                      {renderArtPicker(champion, 'slot', 'champion')}
                       <div className="db-mini-info"><span className="db-mini-name">{champion.name}</span></div>
                     </div>
                   )}

@@ -190,7 +190,8 @@
 .db-panel-identity .db-identity-slot { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
 .db-mini-card { min-width: 0; }
 .db-mini-name { overflow: hidden; text-overflow: ellipsis; }
-.db-mini-card { display: flex; gap: 10px; }
+/* Positioned so the art-picker badge (.db-art.slot) anchors to the card. */
+.db-mini-card { position: relative; display: flex; gap: 10px; }
 .db-mini-img { position: relative; width: 74px; flex-shrink: 0; aspect-ratio: 5 / 7; border-radius: 7px; overflow: hidden; background: var(--bg-2); border: 1px solid var(--border-0); padding: 0; }
 .db-mini-img img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
 .db-mini-img:hover { border-color: var(--accent-line); }
@@ -219,6 +220,30 @@
 .db-mini-controls button:hover { color: var(--text-0); border-color: var(--accent-line); }
 .db-mini-rm { color: var(--miss) !important; }
 .db-mini-controls .db-tag-select { height: 18px; flex: 1 1 100%; font-size: 9px; padding: 0 2px; }
+
+/* Art picker — paintbrush badge on cards that exist in more than one printing,
+   opening a thumbnail popover to choose which art the deck shows. */
+.db-art { position: absolute; z-index: 20; }
+.db-art.tile { right: 2px; bottom: 2px; }
+.db-art.slot { left: 2px; bottom: 2px; }
+.db-art-btn { display: grid; place-items: center; padding: 0; line-height: 1; background: oklch(0 0 0 / 0.72); border: 1px solid var(--border-0); border-radius: 4px; color: var(--text-2); cursor: pointer; }
+.db-art.tile .db-art-btn { width: 14px; height: 14px; font-size: 8px; }
+.db-art.slot .db-art-btn { width: 20px; height: 20px; font-size: 11px; }
+.db-art-btn:hover, .db-art-btn.open { color: var(--text-0); border-color: var(--accent-line); }
+.db-art-btn.custom { border-color: oklch(0.77 0.15 120 / 0.8); }
+
+/* Fixed, not absolute: the deck panel and its sections clip their overflow, so
+   an absolutely-positioned popover would be cut off. Width/max-height are
+   mirrored by POP_W / POP_MAX_H in DeckBuilder.jsx, which places it. */
+.db-art-pop { position: fixed; z-index: 60; width: 232px; max-height: 320px; overflow: hidden; display: flex; flex-direction: column; background: var(--bg-1); border: 1px solid var(--border-0); border-radius: var(--radius-lg); box-shadow: 0 10px 28px oklch(0 0 0 / 0.5); padding: 8px; }
+.db-art-pop-head { font-size: 10.5px; font-weight: 600; color: var(--text-2); padding: 0 2px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.db-art-pop-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; flex: 1; min-height: 0; overflow-y: auto; }
+.db-art-opt { display: flex; flex-direction: column; gap: 3px; padding: 0; background: none; border: none; cursor: pointer; }
+.db-art-opt img { width: 100%; aspect-ratio: 5 / 7; object-fit: cover; object-position: top; border-radius: 5px; border: 1px solid var(--border-0); background: var(--bg-2); }
+.db-art-opt:hover img { border-color: var(--accent-line); }
+.db-art-opt.active img { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.db-art-opt-label { font-size: 9px; color: var(--text-3); text-align: center; line-height: 1.2; }
+.db-art-opt.active .db-art-opt-label { color: var(--accent); }
 
 /* Compact deck-list rows */
 .db-line-group { background: var(--bg-1); border: 1px solid var(--border-0); border-radius: var(--radius-lg); overflow: hidden; }
