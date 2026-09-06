@@ -1,7 +1,7 @@
 import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { isSingleton, isAlwaysFoil } from '../utils/playset';
 import { ownedTotal, unitPrice, fmt$, PROMO_FOLD_SETS } from '../utils/analysis';
-import { exportDeckImage } from '../utils/deckImage';
+import { exportDeckImage, exportSidingImage } from '../utils/deckImage';
 import { buildNameMap, deckFromImport } from '../utils/parseDeckList';
 import { indexPrintings, printingLabel } from '../utils/printings';
 
@@ -166,6 +166,7 @@ export default function DeckBuilder({
   const [mDice, setMDice] = useState('W');
   const [sidingOpp, setSidingOpp] = useState('');
   const [sidingCopied, setSidingCopied] = useState(false);
+  const [sidingImgBusy, setSidingImgBusy] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState('');
   // Open art popover: { token, left, top, bottom } — the anchor's viewport rect,
@@ -678,6 +679,30 @@ export default function DeckBuilder({
     await navigator.clipboard.writeText(out.trimEnd());
     setSidingCopied(true);
     setTimeout(() => setSidingCopied(false), 1800);
+  }
+
+  async function exportSidingGuideImage() {
+    if (!active || !active.siding.length) return;
+    setSidingImgBusy(true);
+    // Show the art the deck displays for each card, but keep its own name.
+    const asShown = (card) => card && { ...card, media: artOf(card).media };
+    const rowsOf = (obj) => Object.entries(obj ?? {})
+      .map(([id, qty]) => ({ card: asShown(cardById.get(id)), qty }))
+      .filter(r => r.card);
+    try {
+      await exportSidingImage({
+        deckName: active.name,
+        plans: active.siding.map(p => ({
+          opp: asShown(cardById.get(p.oppLegendId)),
+          out: rowsOf(p.out),
+          in: rowsOf(p.in),
+        })),
+      });
+    } catch (e) {
+      window.alert(`Image export failed — a card image blocked the canvas. ${e?.message ?? ''}`);
+    } finally {
+      setSidingImgBusy(false);
+    }
   }
 
   // ── art picker ────────────────────────────────────────────────
@@ -1197,9 +1222,14 @@ export default function DeckBuilder({
                   </select>
                   <button className="btn primary" onClick={addSidingPlan} disabled={!sidingOpp}>Add siding plan</button>
                   {active.siding.length > 0 && (
-                    <button className="btn" style={{ marginLeft: 'auto' }} onClick={copySidingGuide}>
-                      {sidingCopied ? '✓ Copied' : 'Copy siding guide'}
-                    </button>
+                    <>
+                      <button className="btn" style={{ marginLeft: 'auto' }} onClick={copySidingGuide}>
+                        {sidingCopied ? '✓ Copied' : 'Copy siding guide'}
+                      </button>
+                      <button className="btn" onClick={exportSidingGuideImage} disabled={sidingImgBusy}>
+                        {sidingImgBusy ? 'Exporting…' : '🖼 Export image'}
+                      </button>
+                    </>
                   )}
                 </div>
                 {active.siding.length === 0

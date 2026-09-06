@@ -15,6 +15,7 @@ import SetEntry from './pages/SetEntry';
 import TradeBinder from './pages/TradeBinder';
 import Shopping from './pages/Shopping';
 import Stats from './pages/Stats';
+import TravelingMerchant from './pages/TravelingMerchant';
 import { fetchTcgProducts, augmentCards } from './utils/tcgAugment';
 import { augmentRunes } from './utils/runeArt';
 import { dedupeCards } from './utils/dedupeCards';
@@ -29,6 +30,8 @@ const FOIL_STORAGE_KEY = 'riftbound-collection-foil';
 const LF_KEY           = 'riftbound-looking-for';
 const UFT_KEY          = 'riftbound-up-for-trade';
 const DECKS_KEY        = 'riftbound-decks';
+const MERCHANT_KEY     = 'riftbound-merchant';
+const VENDOR_KEY       = 'riftbound-merchant-vendor';
 const IS_ELECTRON = typeof window !== 'undefined' && window.__electron__?.isElectron;
 const TCGCSV_BASE = IS_ELECTRON
   ? 'https://tcgcsv.com/tcgplayer/89'
@@ -279,6 +282,14 @@ export default function App() {
     try { return JSON.parse(localStorage.getItem(DECKS_KEY)) || []; }
     catch { return []; }
   });
+  const [merchant, setMerchant] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(MERCHANT_KEY)) || []; }
+    catch { return []; }
+  });
+  const [vendorName, setVendorName] = useState(() => {
+    try { return localStorage.getItem(VENDOR_KEY) || ''; }
+    catch { return ''; }
+  });
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [sort, setSort] = useState(DEFAULT_SORT);
   const [modalCard, setModalCard] = useState(null);
@@ -325,6 +336,8 @@ export default function App() {
   useEffect(() => { localStorage.setItem(LF_KEY, JSON.stringify(lookingFor)); }, [lookingFor]);
   useEffect(() => { localStorage.setItem(UFT_KEY, JSON.stringify(upForTrade)); }, [upForTrade]);
   useEffect(() => { localStorage.setItem(DECKS_KEY, JSON.stringify(decks)); }, [decks]);
+  useEffect(() => { localStorage.setItem(MERCHANT_KEY, JSON.stringify(merchant)); }, [merchant]);
+  useEffect(() => { localStorage.setItem(VENDOR_KEY, vendorName); }, [vendorName]);
 
   function adjust(cardId, delta) {
     setCollection((prev) => {
@@ -539,6 +552,7 @@ export default function App() {
           <button className={`tab${tab === 'entry' ? ' tab--active' : ''}`} onClick={() => setTab('entry')}>Set Entry</button>
           <button className={`tab${tab === 'shopping' ? ' tab--active' : ''}`} onClick={() => setTab('shopping')}>Shopping</button>
           <button className={`tab${tab === 'trade' ? ' tab--active' : ''}`} onClick={() => setTab('trade')}>Trade Binder</button>
+          <button className={`tab${tab === 'merchant' ? ' tab--active' : ''}`} onClick={() => setTab('merchant')}>Merchant</button>
           <button className={`tab${tab === 'stats' ? ' tab--active' : ''}`} onClick={() => setTab('stats')}>Stats</button>
           <button className={`tab${tab === 'decks' ? ' tab--active' : ''}`} onClick={() => setTab('decks')}>Decks</button>
           <button className={`tab${tab === 'export' ? ' tab--active' : ''}`} onClick={() => setTab('export')}>Export</button>
@@ -621,6 +635,21 @@ export default function App() {
               upForTrade={upForTrade}
               onToggleLF={toggleLF}
               onToggleUFT={toggleUFT}
+              onOpenModal={setModalCard}
+            />
+          ) : tab === 'merchant' ? (
+            <TravelingMerchant
+              allCards={allCards}
+              collection={collection}
+              foilCollection={foilCollection}
+              prices={prices}
+              pricesLoading={pricesLoading}
+              merchant={merchant}
+              setMerchant={setMerchant}
+              vendorName={vendorName}
+              setVendorName={setVendorName}
+              onAdjust={adjust}
+              onAdjustFoil={adjustFoil}
               onOpenModal={setModalCard}
             />
           ) : tab === 'stats' ? (
