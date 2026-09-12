@@ -1,9 +1,9 @@
 import { useMemo, useState, useCallback } from 'react';
-import { SET_ORDER, SET_LABELS } from '../utils/generateExport';
+import { useGame } from '../games/GameContext';
 import { cardTarget, ownedTotal, unitPrice, fmt$ } from '../utils/analysis';
 
 // Order cards within a list by set, then collector number.
-function sortForList(cards) {
+function sortForList(cards, SET_ORDER) {
   return [...cards].sort((a, b) => {
     const sa = SET_ORDER.indexOf(a.set?.set_id);
     const sb = SET_ORDER.indexOf(b.set?.set_id);
@@ -16,6 +16,7 @@ function ListColumn({
   title, accent, cards, emptyHint, prices, pricesLoading,
   collection, foilCollection, onRemove, onOpenModal, showSpare,
 }) {
+  const { setOrder: SET_ORDER, setLabels: SET_LABELS } = useGame();
   const total = useMemo(
     () => cards.reduce((sum, c) => sum + (unitPrice(c, prices) ?? 0), 0),
     [cards, prices]
@@ -24,14 +25,14 @@ function ListColumn({
   const [copied, setCopied] = useState(false);
   const copyList = useCallback(async () => {
     if (!cards.length) return;
-    const lines = sortForList(cards).map(c => {
+    const lines = sortForList(cards, SET_ORDER).map(c => {
       const isAlt = c.metadata?.alternate_art ? ' (Alt Art)' : '';
       return `${c.name}${isAlt} — ${SET_LABELS[c.set?.set_id] ?? c.set?.set_id ?? '?'}`;
     });
     await navigator.clipboard.writeText(`${title}:\n` + lines.join('\n'));
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
-  }, [cards, title]);
+  }, [cards, title, SET_ORDER, SET_LABELS]);
 
   return (
     <div className="trade-col">
@@ -52,7 +53,7 @@ function ListColumn({
         <div className="trade-empty">{emptyHint}</div>
       ) : (
         <div className="trade-list">
-          {sortForList(cards).map(card => {
+          {sortForList(cards, SET_ORDER).map(card => {
             const price = unitPrice(card, prices);
             const owned = ownedTotal(card, collection, foilCollection);
             const spare = Math.max(0, owned - cardTarget(card));

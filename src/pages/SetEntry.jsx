@@ -1,10 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { isAlwaysFoil, isSingleton, isBattlefield } from '../utils/playset';
-
-const SET_LABELS = {
-  OGN: 'Origins', OGS: 'Proving Grounds', SFD: 'Spiritforged', UNL: 'Unleashed',
-  OPP: 'Organized Play Promos', PR: 'Promotional Cards', JDG: 'Judge Promos', RWB: 'Worlds Bundle 2025',
-};
+import { useGame } from '../games/GameContext';
 
 const Sparkle = () => (
   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -42,6 +38,9 @@ function sortByEnergy(cards) {
 // ── Config screen ──────────────────────────────────────────────
 
 function ConfigScreen({ allCards, onStart }) {
+  const game = useGame();
+  const SET_LABELS = game.setLabels;
+  const factionLabel = game.faction.label;
   const [selectedSet, setSelectedSet] = useState('');
   const [selectedDomain, setSelectedDomain] = useState('');
 
@@ -50,8 +49,12 @@ function ConfigScreen({ allCards, onStart }) {
     for (const c of allCards) {
       if (c.set?.set_id && c.classification?.type !== 'Rune') seen.add(c.set.set_id);
     }
-    return [...seen].sort();
-  }, [allCards]);
+    const order = game.setOrder;
+    return [...seen].sort((a, b) => {
+      const ia = order.indexOf(a), ib = order.indexOf(b);
+      return (ia === -1 ? order.length : ia) - (ib === -1 ? order.length : ib) || a.localeCompare(b);
+    });
+  }, [allCards, game]);
 
   const domains = useMemo(() => {
     if (!selectedSet) return [];
@@ -89,7 +92,7 @@ function ConfigScreen({ allCards, onStart }) {
     <div className="se-config">
       <div className="se-config-head">
         <h2>Set Entry Wizard</h2>
-        <p>Step through cards one set &amp; domain at a time. Keyboard-first.</p>
+        <p>Step through cards one set &amp; {factionLabel.toLowerCase()} at a time. Keyboard-first.</p>
       </div>
       <div className="se-config-form">
         <div className="se-config-field">
@@ -106,7 +109,7 @@ function ConfigScreen({ allCards, onStart }) {
         </div>
         <div className="se-config-field">
           <label>
-            Domain
+            {factionLabel}
             {!selectedSet && <span className="se-config-dim">(choose a set first)</span>}
           </label>
           <div className="chip-list">
@@ -125,7 +128,7 @@ function ConfigScreen({ allCards, onStart }) {
         </div>
         <div className="se-config-summary">
           <span style={{color: 'var(--text-2)', fontSize: 13}}>
-            {cardCount > 0 ? `${cardCount} cards in this slice` : 'Select a set and domain'}
+            {cardCount > 0 ? `${cardCount} cards in this slice` : `Select a set and ${factionLabel.toLowerCase()}`}
           </span>
           <button
             className="btn-primary"
@@ -142,9 +145,9 @@ function ConfigScreen({ allCards, onStart }) {
 
 // ── Card entry screen ──────────────────────────────────────────
 
-const RARITY_CLASS = { epic: 'epic', rare: 'rare', showcase: 'showcase' };
-
 function CardEntryScreen({ cards, setLabel, domain, collection, foilCollection, onAdjust, onAdjustFoil, onDone, promoByName = {}, promoShortLabels = {} }) {
+  const game = useGame();
+  const RARITY_CLASS = game.rarityClass;
   const [index, setIndex] = useState(0);
 
   const card        = cards[index];
@@ -214,7 +217,7 @@ function CardEntryScreen({ cards, setLabel, domain, collection, foilCollection, 
           }
         </div>
         <div className="entry-meta-row">
-          <span style={{fontFamily: 'var(--font-mono)', color: 'var(--text-3)', fontSize: 11}}>{card.id?.toUpperCase()}</span>
+          <span style={{fontFamily: 'var(--font-mono)', color: 'var(--text-3)', fontSize: 11}}>{card.code ?? card.id?.toUpperCase()}</span>
           <span style={{color: `var(--d-${(card.classification?.domain?.[0] ?? '').toLowerCase()})`, fontSize: 12}}>
             {card.classification?.domain?.[0]}
           </span>
@@ -249,18 +252,12 @@ function CardEntryScreen({ cards, setLabel, domain, collection, foilCollection, 
             )}
           </h1>
           <div className="se-stat-tiles">
-            {card.attributes?.energy != null && (
-              <div className="se-stat-tile">
-                <span className="se-lbl">Energy</span>
-                <span className="se-val">{card.attributes.energy}</span>
+            {game.attributes.map(({ key, label }) => card.attributes?.[key] != null && (
+              <div key={key} className="se-stat-tile">
+                <span className="se-lbl">{label}</span>
+                <span className="se-val">{card.attributes[key]}</span>
               </div>
-            )}
-            {card.attributes?.power != null && (
-              <div className="se-stat-tile">
-                <span className="se-lbl">Power</span>
-                <span className="se-val">{card.attributes.power}</span>
-              </div>
-            )}
+            ))}
           </div>
         </div>
 
@@ -409,6 +406,8 @@ function CardEntryScreen({ cards, setLabel, domain, collection, foilCollection, 
 // ── Page root ──────────────────────────────────────────────────
 
 export default function SetEntry({ allCards, collection, foilCollection, onAdjust, onAdjustFoil, promoByName = {}, promoShortLabels = {} }) {
+  const game = useGame();
+  const SET_LABELS = game.setLabels;
   const [session, setSession] = useState(null);
 
   if (!session) {

@@ -97,7 +97,17 @@ export default function CardItem({
       {/* Full card art (portrait) */}
       <button className="card-art" onClick={() => onOpenModal?.(card)} title="View details">
         {imgSrc
-          ? <img className="card-img" src={imgSrc} alt={card.name} loading="lazy" />
+          ? <img
+              className="card-img"
+              src={imgSrc}
+              alt={card.name}
+              loading="lazy"
+              onError={(e) => {
+                // Signed CDN URLs expire; fall back to the TCGplayer scan once.
+                const fb = card.media?.fallback_image_url;
+                if (fb && e.currentTarget.src !== fb) e.currentTarget.src = fb;
+              }}
+            />
           : <span className="card-art-placeholder">{card.name}</span>
         }
         {isAlt && <span className="alt-badge">ALT</span>}
@@ -114,7 +124,7 @@ export default function CardItem({
         <div className="card-title" title={card.name}>{card.name}</div>
 
         <div className="card-meta">
-          <span className="num">#{card.collector_number}</span>
+          <span className="num">#{card.collector_label ?? card.collector_number}</span>
           {!pricesLoading && (
             <>
               {alwaysFoil
@@ -124,12 +134,12 @@ export default function CardItem({
               {!alwaysFoil && foilPriceVal && (
                 <span className="price foil-price"><span className="meta-foil-sym">✦</span>{fmt(foilPriceVal)}</span>
               )}
-              {promos.map(({ label, price: pp }) => {
+              {promos.map(({ card: promo, label, price: pp }) => {
                 const promoPrice = pp?.foil?.market ?? pp?.normal?.market;
                 if (!promoPrice) return null;
                 const abbrev = PROMO_ABBREV[label] ?? label.slice(0, 2).toUpperCase();
                 return (
-                  <span key={label} className="price promo-price">
+                  <span key={promo?.id ?? label} className="price promo-price">
                     <span className="meta-promo-sym">{abbrev}</span>{fmt(promoPrice)}
                   </span>
                 );

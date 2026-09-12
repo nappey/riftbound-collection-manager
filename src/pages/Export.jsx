@@ -1,15 +1,27 @@
 import { useMemo, useState, useCallback } from 'react';
-import { generateDiscord, generateMarkdown, SET_ORDER, SET_LABELS } from '../utils/generateExport';
+import { generateDiscord, generateMarkdown } from '../utils/generateExport';
+import { useGame } from '../games/GameContext';
 
 const DISCORD_LIMIT = 2000;
 const DEFAULT_CONTENT = { foils: true, champions: true, signatures: false, allOwned: false, lookingFor: false, upForTrade: false };
+const CONTENT_LABELS = {
+  foils: 'Foil indicators',
+  champions: 'Champions',
+  signatures: 'Signature spells',
+  allOwned: 'All owned (not just playsets)',
+  lookingFor: 'Looking-for list',
+  upForTrade: 'Up-for-trade list',
+};
 
 export default function Export({ allCards, collection, foilCollection, prices, pricesLoading, lookingFor = {}, upForTrade = {} }) {
+  const game = useGame();
+  const { setOrder: SET_ORDER, setLabels: SET_LABELS } = game;
   const availableSets = useMemo(() => {
     const seen = new Set();
     for (const c of allCards) { const sid = c.set?.set_id; if (sid) seen.add(sid); }
     return [...SET_ORDER.filter(s => seen.has(s)), ...[...seen].filter(s => !SET_ORDER.includes(s))];
-  }, [allCards]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allCards, game]);
 
   const [selectedSets, setSelectedSets] = useState(() => [...SET_ORDER]);
   const [content, setContent]           = useState(DEFAULT_CONTENT);
@@ -17,13 +29,13 @@ export default function Export({ allCards, collection, foilCollection, prices, p
   const [format, setFormat]             = useState('discord');
   const [copied, setCopied]             = useState(false);
 
-  const opts = { allCards, collection, foilCollection, prices, selectedSets, content, includePricing, lookingFor, upForTrade };
+  const opts = { allCards, collection, foilCollection, prices, selectedSets, content, includePricing, lookingFor, upForTrade, game };
 
   const output = useMemo(() => {
     if (allCards.length === 0) return 'Loading cards…';
     return format === 'discord' ? generateDiscord(opts) : generateMarkdown(opts);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allCards, collection, foilCollection, prices, selectedSets, content, includePricing, format, lookingFor, upForTrade]);
+  }, [allCards, collection, foilCollection, prices, selectedSets, content, includePricing, format, lookingFor, upForTrade, game]);
 
   const charCount = output.length;
   const overLimit = format === 'discord' && charCount > DISCORD_LIMIT;
@@ -48,7 +60,7 @@ export default function Export({ allCards, collection, foilCollection, prices, p
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href = url;
-    a.download = `riftbound-export-${new Date().toISOString().slice(0,10)}.${ext}`;
+    a.download = `${game.id}-export-${new Date().toISOString().slice(0,10)}.${ext}`;
     document.body.appendChild(a); a.click();
     document.body.removeChild(a); URL.revokeObjectURL(url);
   }
@@ -88,14 +100,7 @@ export default function Export({ allCards, collection, foilCollection, prices, p
         <div className="export-section">
           <span className="export-section-title">Include</span>
           <div className="export-toggle-list">
-            {[
-              ['foils',      'Foil indicators'],
-              ['champions',  'Champions'],
-              ['signatures', 'Signature spells'],
-              ['allOwned',   'All owned (not just playsets)'],
-              ['lookingFor', 'Looking-for list'],
-              ['upForTrade', 'Up-for-trade list'],
-            ].map(([key, lbl]) => (
+            {game.export.contentOptions.map(key => [key, CONTENT_LABELS[key]]).map(([key, lbl]) => (
               <label key={key} className="export-check">
                 <input type="checkbox" checked={content[key]} onChange={() => toggleContent(key)} />
                 <span>{lbl}</span>

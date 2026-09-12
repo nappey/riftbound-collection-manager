@@ -1,14 +1,10 @@
 import { useEffect } from 'react';
-import RiftText from './RiftText';
-import { splitRiftParagraphs } from '../utils/riftText';
-
-const RARITY_CLASS = {
-  epic: 'epic',
-  rare: 'rare',
-  showcase: 'showcase',
-};
+import { useGame } from '../games/GameContext';
 
 export default function CardModal({ card, price, pricesLoading, onClose, onStartDeck }) {
+  const game = useGame();
+  const RARITY_CLASS = game.rarityClass;
+  const { Component: CardText, split } = game.text;
   useEffect(() => {
     if (!card) return;
     function onKey(e) { if (e.key === 'Escape') onClose(); }
@@ -24,7 +20,7 @@ export default function CardModal({ card, price, pricesLoading, onClose, onStart
   const type = [card.classification?.supertype, card.classification?.type].filter(Boolean).join(' ');
   const domains = card.classification?.domain ?? [];
   const attrs = card.attributes ?? {};
-  const textParagraphs = splitRiftParagraphs(card.text?.plain ?? '');
+  const textParagraphs = split(card.text?.plain ?? '');
   const flavour = card.text?.flavour ?? '';
   const normalPrice = price?.normal?.market;
   const foilPrice = price?.foil?.market;
@@ -38,7 +34,7 @@ export default function CardModal({ card, price, pricesLoading, onClose, onStart
         <div className="modal-img-col">
           {imgSrc
             ? <img src={imgSrc} alt={card.name} />
-            : <div className="modal-img-placeholder">[{type} · {card.id?.toUpperCase()}]</div>
+            : <div className="modal-img-placeholder">[{type} · {card.code ?? card.id?.toUpperCase()}]</div>
           }
         </div>
 
@@ -57,7 +53,7 @@ export default function CardModal({ card, price, pricesLoading, onClose, onStart
                 <span key={d} className="modal-tag-pill" style={{color: `var(--d-${d.toLowerCase()})`}}>{d}</span>
               ))}
               <span className="modal-tag-pill" style={{color: 'var(--text-3)'}}>
-                {card.set?.label} #{String(card.collector_number ?? '').padStart(3, '0')}
+                {card.set?.label} #{card.collector_label ?? String(card.collector_number ?? '').padStart(3, '0')}
               </span>
             </div>
           </div>
@@ -69,24 +65,12 @@ export default function CardModal({ card, price, pricesLoading, onClose, onStart
           )}
 
           <div className="modal-stats">
-            {attrs.energy != null && (
-              <div className="modal-stat">
-                <span className="m-lbl">Energy</span>
-                <span className="m-val">{attrs.energy}</span>
+            {game.attributes.map(({ key, label }) => attrs[key] != null && (
+              <div key={key} className="modal-stat">
+                <span className="m-lbl">{label}</span>
+                <span className="m-val">{attrs[key]}</span>
               </div>
-            )}
-            {attrs.power != null && (
-              <div className="modal-stat">
-                <span className="m-lbl">Power</span>
-                <span className="m-val">{attrs.power}</span>
-              </div>
-            )}
-            {attrs.might != null && (
-              <div className="modal-stat">
-                <span className="m-lbl">Might</span>
-                <span className="m-val">{attrs.might}</span>
-              </div>
-            )}
+            ))}
             {!pricesLoading && normalPrice && (
               <div className="modal-stat">
                 <span className="m-lbl">Price</span>
@@ -104,7 +88,7 @@ export default function CardModal({ card, price, pricesLoading, onClose, onStart
           {textParagraphs.length > 0 && (
             <div className="modal-text-area">
               {textParagraphs.map((chunk, i) => (
-                <p key={i}><RiftText text={chunk} /></p>
+                <p key={i}><CardText text={chunk} /></p>
               ))}
             </div>
           )}

@@ -1,6 +1,6 @@
 # Riftbound Collection Manager
 
-Desktop app for tracking your Riftbound TCG collection — prices, playsets, foils, deck checking, set entry wizard, and Discord-ready exports.
+Desktop app for tracking your Riftbound TCG collection — prices, playsets, foils, deck checking, set entry wizard, and Discord-ready exports. Also supports **Cyberpunk TCG** — switch games from the header; each game keeps its own collection, decks and trade lists.
 
 ## Download
 
@@ -16,6 +16,8 @@ Go to [Releases](../../releases) and download the latest `.exe` installer (Windo
 - **Deck Check** — paste a deck list and see what you're missing
 - **Export** — Discord-ready code blocks or Markdown, filtered by set and content type
 - **CSV Import/Export** — round-trips with Piltover Archive export format
+- **Multi-game** — Riftbound (cards from riftcodex, prices from tcgcsv category 89) and Cyberpunk TCG (cards + every printing from the Netdeck.gg API behind cyberpunktcg.com, prices/product ids from tcgcsv category 92 `ProductsAndPrices.csv`). Game configs live in `src/games/` — adding a game means adding a config + adapter there.
+- **Cyberpunk deck builder** — 3 Legends, 40–50 card deck, 7-card sideboard, per-color RAM budget validation, Netdeck-format decklist import/export
 
 ## Development
 

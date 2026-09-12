@@ -1,13 +1,15 @@
 import { isAlwaysFoil, playsetTarget } from './playset';
+import { rulesFor } from '../games/rules';
+import { PROMO_FOLD_SETS } from '../games/riftboundRules';
 
-// Promo sets whose cards are folded into their base card in the main view.
-// Mirrors PROMO_FOLD_SETS in App.jsx — kept here so analysis pages agree.
-export const PROMO_FOLD_SETS = new Set(['OPP', 'PR', 'JDG', 'RWB']);
+// Riftbound promo sets whose cards are folded into their base card in the main
+// view. Re-exported for the Riftbound-only components (RuneBox, PromoBox…).
+export { PROMO_FOLD_SETS };
 
 // A card counts toward set completion / playset math if it's a real,
-// stand-alone card (not a Rune, not a folded promo reprint).
+// stand-alone card (for Riftbound: not a Rune, not a folded promo reprint).
 export function isPlaysetEligible(card) {
-  return card.classification?.type !== 'Rune' && !PROMO_FOLD_SETS.has(card.set?.set_id);
+  return rulesFor(card).isPlaysetEligible(card);
 }
 
 // How many copies make this card "complete": 1 for singletons

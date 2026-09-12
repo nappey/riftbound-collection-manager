@@ -1,11 +1,13 @@
 import { useMemo, useState, useCallback } from 'react';
-import { SET_ORDER, SET_LABELS } from '../utils/generateExport';
+import { useGame } from '../games/GameContext';
 import { isPlaysetEligible, cardTarget, ownedTotal, unitPrice, fmt$ } from '../utils/analysis';
 
 export default function Shopping({
   allCards, collection, foilCollection, prices, pricesLoading,
   lookingFor, onToggleLF, onOpenModal,
 }) {
+  const game = useGame();
+  const { setOrder: SET_ORDER, setLabels: SET_LABELS } = game;
   const [scope, setScope] = useState('progress'); // 'progress' | 'all'
   const [sort, setSort]   = useState('set');       // 'set' | 'cost' | 'name'
 
@@ -57,11 +59,11 @@ export default function Shopping({
         copies: rows.reduce((n, r) => n + r.need, 0),
       };
     });
-  }, [needed, sort]);
+  }, [needed, sort, SET_ORDER, SET_LABELS]);
 
   const [copied, setCopied] = useState(false);
   const copyBuyList = useCallback(async () => {
-    let out = `Riftbound Buy List — ${totals.copies} cards · est. ${fmt$(totals.cost)}\n\n`;
+    let out = `${game.export.buyListTitle} — ${totals.copies} cards · est. ${fmt$(totals.cost)}\n\n`;
     for (const g of groups) {
       out += `${g.label}\n`;
       for (const r of g.rows) {
@@ -72,7 +74,7 @@ export default function Shopping({
     await navigator.clipboard.writeText(out.trimEnd());
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
-  }, [groups, totals]);
+  }, [groups, totals, game]);
 
   return (
     <div className="shop-wrap">

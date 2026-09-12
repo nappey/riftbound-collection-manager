@@ -1,7 +1,9 @@
 import { useRef, useState } from 'react';
-import { parseCSV, buildRidMap, matchCSVRows } from '../utils/csvImport';
+import { parseCSV } from '../utils/csvImport';
+import { useGame } from '../games/GameContext';
 
 export default function ImportButton({ allCards, onImport }) {
+  const game = useGame();
   const inputRef = useRef(null);
   const [status, setStatus] = useState(null);
 
@@ -12,8 +14,7 @@ export default function ImportButton({ allCards, onImport }) {
     const reader = new FileReader();
     reader.onload = (ev) => {
       const rows = parseCSV(ev.target.result);
-      const ridMap = buildRidMap(allCards);
-      const { updates, foilUpdates, unmatched } = matchCSVRows(rows, ridMap, allCards);
+      const { updates, foilUpdates, unmatched } = game.csv.match(rows, allCards);
 
       onImport({ updates, foilUpdates });
       const matched = Object.keys(updates).length + Object.keys(foilUpdates).length;

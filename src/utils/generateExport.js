@@ -1,10 +1,11 @@
 import { formatPlayset } from './playset';
+import { SETS as RIFTBOUND_SETS } from '../games/riftboundRules';
 
-export const SET_ORDER = ['OGN', 'OGS', 'SFD', 'UNL', 'OPP', 'PR', 'JDG', 'RWB'];
-export const SET_LABELS = {
-  OGN: 'Origins', OGS: 'Proving Grounds', SFD: 'Spiritforged', UNL: 'Unleashed',
-  OPP: 'Organized Play Promos', PR: 'Promotional Cards', JDG: 'Judge Promos', RWB: 'Worlds Bundle 2025',
-};
+// Riftbound defaults, kept for callers that don't pass a game. Pages read the
+// active game's setOrder/setLabels via useGame() and pass them in `opts`.
+export const SET_ORDER = RIFTBOUND_SETS.map(s => s.id);
+export const SET_LABELS = Object.fromEntries(RIFTBOUND_SETS.map(s => [s.id, s.label]));
+const DEFAULT_GAME_OPTS = { setOrder: SET_ORDER, setLabels: SET_LABELS, title: 'Riftbound Collection' };
 
 // ── helpers ────────────────────────────────────────────────────
 
@@ -68,18 +69,24 @@ export function gatherSections({ allCards, collection, foilCollection, prices,
 
 // ── Simple name-only list for LF / UFT sections ────────────────
 
-function discordListSection(section) {
-  const { label, cards } = section;
+// Group a section's cards by set, in the game's set order (unknown sets last).
+function bySetOrdered(cards, { setOrder }) {
   const bySet = {};
   for (const c of cards) {
     const sid = c.set?.set_id ?? 'UNK';
     (bySet[sid] = bySet[sid] || []).push(c);
   }
-  const setIds = [...SET_ORDER.filter(s => bySet[s]),
-                  ...Object.keys(bySet).filter(s => !SET_ORDER.includes(s))];
+  const setIds = [...setOrder.filter(s => bySet[s]),
+                  ...Object.keys(bySet).filter(s => !setOrder.includes(s))];
+  return { bySet, setIds };
+}
+
+function discordListSection(section, g) {
+  const { label, cards } = section;
+  const { bySet, setIds } = bySetOrdered(cards, g);
   let out = '';
   for (const sid of setIds) {
-    out += `**${label} — ${SET_LABELS[sid] ?? sid}**\n\`\`\`\n`;
+    out += `**${label} — ${g.setLabels[sid] ?? sid}**\n\`\`\`\n`;
     for (const c of bySet[sid]) {
       const isAlt = c.metadata?.alternate_art;
       out += c.name + (isAlt ? ' ✦ Alt Art' : '') + '\n';
@@ -89,18 +96,12 @@ function discordListSection(section) {
   return out;
 }
 
-function mdListSection(section) {
+function mdListSection(section, g) {
   const { label, cards } = section;
-  const bySet = {};
-  for (const c of cards) {
-    const sid = c.set?.set_id ?? 'UNK';
-    (bySet[sid] = bySet[sid] || []).push(c);
-  }
-  const setIds = [...SET_ORDER.filter(s => bySet[s]),
-                  ...Object.keys(bySet).filter(s => !SET_ORDER.includes(s))];
+  const { bySet, setIds } = bySetOrdered(cards, g);
   let out = `## ${label}\n\n`;
   for (const sid of setIds) {
-    out += `### ${SET_LABELS[sid] ?? sid}\n\n`;
+    out += `### ${g.setLabels[sid] ?? sid}\n\n`;
     for (const c of bySet[sid]) {
       const isAlt = c.metadata?.alternate_art;
       out += `- **${c.name}**${isAlt ? ' ✦ Alt Art' : ''}\n`;
@@ -112,24 +113,15 @@ function mdListSection(section) {
 
 // ── Discord format ─────────────────────────────────────────────
 
-function discordSection(section, collection, foilCollection, prices, includePricing) {
+function discordSection(section, collection, foilCollection, prices, includePricing, g) {
   const { label, cards, foilMode } = section;
-
-  // Group by set
-  const bySet = {};
-  for (const c of cards) {
-    const sid = c.set?.set_id ?? 'UNK';
-    (bySet[sid] = bySet[sid] || []).push(c);
-  }
-
-  const setIds = [...SET_ORDER.filter(s => bySet[s]),
-                  ...Object.keys(bySet).filter(s => !SET_ORDER.includes(s))];
+  const { bySet, setIds } = bySetOrdered(cards, g);
 
   let out = '';
 
   for (const sid of setIds) {
     const setCards = bySet[sid];
-    const setLabel = SET_LABELS[sid] ?? sid;
+    const setLabel = g.setLabels[sid] ?? sid;
     const setVal = setCards.reduce((sum, c) => {
       const cnt  = foilMode ? (foilCollection[c.id] ?? 0) : (collection[c.id] ?? 0);
       const fcnt = foilMode ? 0 : (foilCollection[c.id] ?? 0);
@@ -172,22 +164,23 @@ function discordSection(section, collection, foilCollection, prices, includePric
 }
 
 export function generateDiscord({ allCards, collection, foilCollection, prices,
-  selectedSets, content, includePricing, lookingFor, upForTrade }) {
+  selectedSets, content, includePricing, lookingFor, upForTrade, game }) {
+  const g = { ...DEFAULT_GAME_OPTS, ...(game ? { setOrder: game.setOrder, setLabels: game.setLabels, title: game.export.title } : {}) };
   const sections = gatherSections({ allCards, collection, foilCollection, prices,
     selectedSets, content, includePricing, lookingFor, upForTrade });
 
   if (!sections.length) return '*(nothing to export with these options)*';
 
   const date = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-  const setList = selectedSets.map(s => SET_LABELS[s] ?? s).join(', ');
+  const setList = selectedSets.map(s => g.setLabels[s] ?? s).join(', ');
   const totalVal = sections.reduce((s, sec) => s + sec.totalValue, 0);
   const valStr = includePricing && totalVal > 0 ? ` • Total value: **${fmt$(totalVal)}**` : '';
 
-  let out = `**Riftbound Collection** • ${setList} • ${date}${valStr}\n\n`;
+  let out = `**${g.title}** • ${setList} • ${date}${valStr}\n\n`;
   for (const sec of sections) {
     out += (sec.key === 'lf' || sec.key === 'uft')
-      ? discordListSection(sec)
-      : discordSection(sec, collection, foilCollection, prices, includePricing);
+      ? discordListSection(sec, g)
+      : discordSection(sec, collection, foilCollection, prices, includePricing, g);
   }
 
   return out.trimEnd();
@@ -195,23 +188,16 @@ export function generateDiscord({ allCards, collection, foilCollection, prices,
 
 // ── Markdown format ────────────────────────────────────────────
 
-function mdSection(section, collection, foilCollection, prices, includePricing) {
+function mdSection(section, collection, foilCollection, prices, includePricing, g) {
   const { label, cards, foilMode, totalValue } = section;
-
-  const bySet = {};
-  for (const c of cards) {
-    const sid = c.set?.set_id ?? 'UNK';
-    (bySet[sid] = bySet[sid] || []).push(c);
-  }
-  const setIds = [...SET_ORDER.filter(s => bySet[s]),
-                  ...Object.keys(bySet).filter(s => !SET_ORDER.includes(s))];
+  const { bySet, setIds } = bySetOrdered(cards, g);
 
   let out = `## ${label}`;
   if (includePricing && totalValue > 0) out += ` — ${fmt$(totalValue)}`;
   out += '\n\n';
 
   for (const sid of setIds) {
-    out += `### ${SET_LABELS[sid] ?? sid}\n\n`;
+    out += `### ${g.setLabels[sid] ?? sid}\n\n`;
     for (const c of bySet[sid]) {
       const count     = foilMode ? (foilCollection[c.id] ?? 0) : (collection[c.id] ?? 0);
       const foilCount = foilMode ? 0 : (foilCollection[c.id] ?? 0);
@@ -243,7 +229,8 @@ function mdSection(section, collection, foilCollection, prices, includePricing) 
 }
 
 export function generateMarkdown({ allCards, collection, foilCollection, prices,
-  selectedSets, content, includePricing, lookingFor, upForTrade }) {
+  selectedSets, content, includePricing, lookingFor, upForTrade, game }) {
+  const g = { ...DEFAULT_GAME_OPTS, ...(game ? { setOrder: game.setOrder, setLabels: game.setLabels, title: game.export.title } : {}) };
   const sections = gatherSections({ allCards, collection, foilCollection, prices,
     selectedSets, content, includePricing, lookingFor, upForTrade });
 
@@ -252,14 +239,14 @@ export function generateMarkdown({ allCards, collection, foilCollection, prices,
   const date = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   const totalVal = sections.reduce((s, sec) => s + sec.totalValue, 0);
 
-  let out = `# Riftbound Collection\n\n*${date}*`;
+  let out = `# ${g.title}\n\n*${date}*`;
   if (includePricing && totalVal > 0) out += ` · **Total value: ${fmt$(totalVal)}**`;
   out += '\n\n---\n\n';
 
   for (const sec of sections) {
     out += (sec.key === 'lf' || sec.key === 'uft')
-      ? mdListSection(sec)
-      : mdSection(sec, collection, foilCollection, prices, includePricing);
+      ? mdListSection(sec, g)
+      : mdSection(sec, collection, foilCollection, prices, includePricing, g);
   }
 
   return out.trimEnd();

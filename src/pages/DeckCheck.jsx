@@ -1,51 +1,20 @@
 import { useMemo, useState } from 'react';
-import { parseDeckList, buildNameMap, matchDeckList, SECTION_ORDER } from '../utils/parseDeckList';
-
-const SECTION_LABELS = {
-  Legend:      'Legend',
-  Champion:    'Champion',
-  MainDeck:    'Main Deck',
-  Battlefields:'Battlefields',
-  Runes:       'Rune Deck',
-  Sideboard:   'Sideboard',
-};
-
-const PLACEHOLDER = `Legend:
-1 Pyke, Bloodharbor Ripper
-
-Champion:
-1 Pyke, Returned
-
-MainDeck:
-3 Sneaky Deckhand
-3 Tideturner
-3 Bewitching Spirit
-2 Abandon
-2 Gust
-
-Battlefields:
-1 The Arena's Greatest
-1 Hall of Legends
-1 Ripper's Bay
-
-Runes:
-6 Fury Rune
-6 Chaos Rune
-
-Sideboard:
-2 Brynhir Thundersong
-2 Downwell`;
+import { parseDeckList, buildNameMap, matchDeckList, sectionOrderFor } from '../utils/parseDeckList';
+import { useGame } from '../games/GameContext';
 
 export default function DeckCheck({ allCards, collection }) {
+  const game = useGame();
+  const SECTION_ORDER = sectionOrderFor(game);
+  const SECTION_LABELS = game.deck.sectionLabels;
   const [input, setInput] = useState('');
 
   const nameMap = useMemo(() => buildNameMap(allCards), [allCards]);
 
   const matched = useMemo(() => {
     if (!input.trim()) return null;
-    const sections = parseDeckList(input);
+    const sections = parseDeckList(input, game);
     return matchDeckList(sections, nameMap);
-  }, [input, nameMap]);
+  }, [input, nameMap, game]);
 
   const summary = useMemo(() => {
     if (!matched) return null;
@@ -87,7 +56,7 @@ export default function DeckCheck({ allCards, collection }) {
             className="deck-textarea"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={PLACEHOLDER}
+            placeholder={game.deck.checkPlaceholder}
             spellCheck={false}
           />
           <div className="deck-btns">
@@ -175,7 +144,9 @@ export default function DeckCheck({ allCards, collection }) {
           <div className="deck-stat-card">
             <h3>Instructions</h3>
             <div style={{fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.6}}>
-              Paste a deck list on the left. Use section headers like <code style={{fontFamily: 'var(--font-mono)', color: 'var(--accent)'}}>Legend:</code>, <code style={{fontFamily: 'var(--font-mono)', color: 'var(--accent)'}}>Champion:</code>, <code style={{fontFamily: 'var(--font-mono)', color: 'var(--accent)'}}>MainDeck:</code> followed by lines like <code style={{fontFamily: 'var(--font-mono)', color: 'var(--accent)'}}>3 Card Name</code>.
+              Paste a deck list on the left. Use section headers like {game.deck.checkHeaders.map((h, i) => (
+                <span key={h}>{i > 0 && ', '}<code style={{fontFamily: 'var(--font-mono)', color: 'var(--accent)'}}>{h}</code></span>
+              ))} followed by lines like <code style={{fontFamily: 'var(--font-mono)', color: 'var(--accent)'}}>3 Card Name</code>.
             </div>
           </div>
         )}

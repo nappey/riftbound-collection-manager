@@ -1,29 +1,23 @@
-const KNOWN_SECTIONS = ['Legend', 'Champion', 'MainDeck', 'Battlefields', 'Runes', 'Sideboard'];
+import { indexPrintings } from './printings';
 
-// Elemental rune domains — the deck builder tracks runes abstractly by domain
-// rather than as real cards, so on import "6 Fury Rune" becomes { Fury: 6 }.
-export const ELEMENTAL_DOMAINS = ['Body', 'Calm', 'Chaos', 'Fury', 'Mind', 'Order'];
+// Every function here takes the active game config: its `deck` rules supply
+// the section aliases, identity size and which zones exist.
 
-// Header words other sites use, mapped to our canonical section names.
-const SECTION_ALIASES = {
-  legend: 'Legend', legends: 'Legend',
-  champion: 'Champion', champions: 'Champion',
-  main: 'MainDeck', maindeck: 'MainDeck', 'main deck': 'MainDeck',
-  deck: 'MainDeck', units: 'MainDeck', spells: 'MainDeck', gear: 'MainDeck',
-  battlefield: 'Battlefields', battlefields: 'Battlefields',
-  rune: 'Runes', runes: 'Runes', 'rune deck': 'Runes',
-  sideboard: 'Sideboard', side: 'Sideboard', sb: 'Sideboard',
-};
-
-// Detect a section header. Handles "MainDeck:", "Main Deck (40)", "Sideboard"
-// and known aliases. Returns the canonical section name, or null.
-function headerOf(line) {
+// Detect a section header. Handles "MainDeck:", "Main Deck (40)", "Sideboard",
+// Netdeck's "// Legends (3)" and known aliases. Returns the canonical section
+// name, or null.
+function headerOf(line, aliases) {
   if (/^\s*\d/.test(line)) return null; // starts with a quantity → it's a card line
-  const stripped = line.replace(/\(\s*\d+\s*\)\s*$/, '').replace(/:\s*$/, '').trim();
+  const stripped = line
+    .replace(/^\/\/\s*/, '')                 // "// Units (12)" (Netdeck)
+    .replace(/\(\s*\d+\s*\)\s*$/, '')
+    .replace(/:\s*$/, '')
+    .trim();
   const key = stripped.toLowerCase();
-  if (SECTION_ALIASES[key]) return SECTION_ALIASES[key];
+  if (aliases[key]) return aliases[key];
   // A bare "Word:" header line that isn't a known alias — keep its own name.
   if (/:\s*$/.test(line) && /^[\w\s'/&-]+$/.test(stripped)) return stripped;
+  if (/^\/\//.test(line) && stripped) return stripped;
   return null;
 }
 
@@ -49,8 +43,11 @@ function cardOf(line) {
 
 // A "Name:"/"Deck:" line carrying a value is deck metadata, not a card.
 const NAME_META = /^\s*(?:deck\s*name|deck|name)\s*[:=]\s*\S.*$/i;
+// Netdeck's "# Deck Name" title line.
+const TITLE_LINE = /^\s*#\s+\S/;
 
-export function parseDeckList(text) {
+export function parseDeckList(text, game) {
+  const aliases = game.deck.sectionAliases;
   const sections = {};
   let current = null;
   const push = (entry) => {
@@ -62,9 +59,9 @@ export function parseDeckList(text) {
   for (const raw of text.split('\n')) {
     const line = raw.trim();
     if (!line) continue;
-    if (NAME_META.test(line)) continue; // "Name: …" / "Deck: …" metadata line
+    if (NAME_META.test(line) || TITLE_LINE.test(line)) continue; // metadata / title line
 
-    const header = headerOf(line);
+    const header = headerOf(line, aliases);
     if (header) { current = header; sections[current] ??= []; continue; }
 
     push(cardOf(line));
@@ -76,6 +73,7 @@ export function parseDeckList(text) {
 // Normalize a card name for loose matching:
 // "Pyke - Returned"  →  "pyke returned"
 // "Pyke, Returned"   →  "pyke returned"
+// "V: Streetkid"     →  "v streetkid"
 function norm(name) {
   return name
     .toLowerCase()
@@ -84,12 +82,21 @@ function norm(name) {
     .trim();
 }
 
+// Name → canonical printing. Every printing of a card shares its name, so
+// index the base printing of each group (rather than whichever came last) so
+// an imported list resolves to the standard art.
 export function buildNameMap(cards) {
+  const printings = indexPrintings(cards);
   const map = new Map();
   for (const card of cards) {
-    // Canonical key
-    map.set(norm(card.name), card);
-    // Also index without "(Alternate Art)" suffix so we don't accidentally pick alts
+    const base = printings.get(card.id)?.base ?? card;
+    const key = norm(card.name);
+    if (!map.has(key) || base === card) map.set(key, base);
+    // Cyberpunk lists sometimes write "Name - Subname" or just the base name.
+    if (card.subname) {
+      const alt = norm(`${card.base_name ?? ''} ${card.subname}`);
+      if (!map.has(alt)) map.set(alt, base);
+    }
   }
   return map;
 }
@@ -108,29 +115,34 @@ export function matchDeckList(sections, nameMap) {
   return result;
 }
 
-// Pull "Fury Rune" → "Fury" when a rune line doesn't match a real card.
-function runeDomainFromName(name) {
+// Pull "Fury Rune" → "Fury" when a rune line doesn't match a real card
+// (Riftbound tracks runes abstractly by domain, so "6 Fury Rune" → { Fury: 6 }).
+function runeDomainFromName(name, domains) {
   const m = name.match(/^(\w+)\s+rune$/i);
   if (!m) return null;
-  return ELEMENTAL_DOMAINS.find(d => d.toLowerCase() === m[1].toLowerCase()) ?? null;
+  return domains.find(d => d.toLowerCase() === m[1].toLowerCase()) ?? null;
 }
 
-// Try to read a deck name out of a "Name:"/"Deck:" style header line.
+// Try to read a deck name out of a "Name:"/"Deck:"/"# Title" style line.
 function deckNameFromText(text) {
-  const m = text.match(/^\s*(?:deck\s*name|deck|name)\s*[:=]\s*(.+?)\s*$/im);
+  const m = text.match(/^\s*(?:deck\s*name|deck|name)\s*[:=]\s*(.+?)\s*$/im)
+    ?? text.match(/^\s*#\s+(.+?)\s*$/m);
   return m ? m[1].trim() : null;
 }
 
 // Convert a pasted decklist into the deck-builder's deck shape. Cards are
 // routed by their real classification (legend / rune / battlefield / other),
 // so a flat header-less list from another site still lands in the right zones.
-// Runes collapse to abstract per-domain counts. Returns the importable fields
-// plus a report of what matched and what didn't.
-export function deckFromImport(text, nameMap) {
-  const sections = matchDeckList(parseDeckList(text), nameMap);
+// Runes collapse to abstract per-domain counts (Riftbound). Returns the
+// importable fields plus a report of what matched and what didn't.
+export function deckFromImport(text, nameMap, game) {
+  const R = game.deck;
+  const domains = R.elementalFactions ?? [];
+  const sections = matchDeckList(parseDeckList(text, game), nameMap);
 
   const main = {}, sideboard = {}, runes = {};
-  let legendId = null, championId = null;
+  const legendIds = [];
+  let championId = null;
   const unknown = [];
   let total = 0, matchedCount = 0;
 
@@ -142,7 +154,7 @@ export function deckFromImport(text, nameMap) {
       total += quantity;
 
       if (!card) {
-        const dm = runeDomainFromName(name);
+        const dm = R.hasRunes ? runeDomainFromName(name, domains) : null;
         if (dm) { runes[dm] = (runes[dm] ?? 0) + quantity; matchedCount += quantity; }
         else unknown.push({ name, quantity });
         continue;
@@ -151,10 +163,13 @@ export function deckFromImport(text, nameMap) {
       matchedCount += quantity;
       const type = card.classification?.type;
 
-      if (type === 'Legend') { legendId ??= card.id; continue; }
+      if (type === 'Legend') {
+        if (legendIds.length < R.identity.max && !legendIds.includes(card.id)) legendIds.push(card.id);
+        continue;
+      }
 
-      if (type === 'Rune') {
-        const dm = (card.classification?.domain ?? []).find(d => ELEMENTAL_DOMAINS.includes(d));
+      if (R.hasRunes && type === 'Rune') {
+        const dm = (card.classification?.domain ?? []).find(d => domains.includes(d));
         if (dm) runes[dm] = (runes[dm] ?? 0) + quantity;
         continue;
       }
@@ -162,7 +177,7 @@ export function deckFromImport(text, nameMap) {
       // A "Champion:" section marks the chosen champion. Its actual copy lives
       // in the main deck (added after the loop if the list didn't repeat it),
       // so don't add to main here — that would double-count our own export.
-      if (sec === 'champion' || sec === 'champions') { championId ??= card.id; continue; }
+      if (R.hasChampion && (sec === 'champion' || sec === 'champions')) { championId ??= card.id; continue; }
 
       if (sec.includes('side')) { sideboard[card.id] = (sideboard[card.id] ?? 0) + quantity; continue; }
 
@@ -175,9 +190,11 @@ export function deckFromImport(text, nameMap) {
 
   return {
     name: deckNameFromText(text),
-    legendId, championId, main, sideboard, runes,
+    legendId: legendIds[0] ?? null, legendIds, championId, main, sideboard, runes,
     unknown, total, matchedCount,
   };
 }
 
-export const SECTION_ORDER = KNOWN_SECTIONS;
+export function sectionOrderFor(game) {
+  return game.deck.sectionOrder;
+}

@@ -39,7 +39,7 @@ function createWindow() {
 
   // Inject permissive CORS so prices (tcgcsv) load, and so card-image CDNs can
   // be drawn onto a canvas CORS-clean for the deck image export.
-  const CORS_HOSTS = ['tcgcsv.com', 'cmsassets.rgpub.io', 'tcgplayer-cdn.tcgplayer.com'];
+  const CORS_HOSTS = ['tcgcsv.com', 'cmsassets.rgpub.io', 'tcgplayer-cdn.tcgplayer.com', 'api.netdeck.gg', 'dstcynss47vun.cloudfront.net'];
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     if (CORS_HOSTS.some(h => details.url.includes(h))) {
       callback({

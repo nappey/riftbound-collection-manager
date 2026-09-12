@@ -1,11 +1,11 @@
 import { useMemo } from 'react';
-import { SET_ORDER, SET_LABELS } from '../utils/generateExport';
+import { useGame } from '../games/GameContext';
 import {
   isPlaysetEligible, cardTarget, ownedTotal, cardMarketValue, fmt$,
 } from '../utils/analysis';
 
-const DOMAINS = ['body', 'calm', 'chaos', 'fury', 'mind', 'order', 'colorless'];
-const RARITIES = ['common', 'uncommon', 'rare', 'epic', 'showcase'];
+const slug = (s) => s.toLowerCase().replace(/\s+/g, '-');
+const title = (s) => s.replace(/(^|[\s-])\w/g, (m) => m.toUpperCase()).replace(/-/g, ' ');
 
 function BarRow({ label, owned, total, color, valueText }) {
   const pct = total ? Math.round((owned / total) * 100) : 0;
@@ -22,6 +22,11 @@ function BarRow({ label, owned, total, color, valueText }) {
 }
 
 export default function Stats({ allCards, collection, foilCollection, prices, pricesLoading, onOpenModal }) {
+  const game = useGame();
+  const { setOrder: SET_ORDER, setLabels: SET_LABELS } = game;
+  const DOMAINS = [...game.faction.values, ...(game.faction.neutral ? [game.faction.neutral] : [])].map(d => d.toLowerCase());
+  const RARITIES = game.statsRarities;
+  const neutral = (game.faction.neutral ?? '').toLowerCase();
   const stats = useMemo(() => {
     const eligible = allCards.filter(isPlaysetEligible);
     const runes = allCards.filter(c => c.classification?.type === 'Rune');
@@ -44,7 +49,7 @@ export default function Stats({ allCards, collection, foilCollection, prices, pr
       if (isOwned) uniqueOwned++;
       if (owned >= cardTarget(card)) playsetsDone++;
 
-      const dom = (card.classification?.domain?.[0] ?? 'colorless').toLowerCase();
+      const dom = (card.classification?.domain?.[0] ?? neutral).toLowerCase();
       if (byDomain[dom]) { byDomain[dom].total++; if (isOwned) byDomain[dom].owned++; }
       const rar = (card.classification?.rarity ?? '').toLowerCase();
       if (byRarity[rar]) { byRarity[rar].total++; if (isOwned) byRarity[rar].owned++; }
@@ -76,7 +81,8 @@ export default function Stats({ allCards, collection, foilCollection, prices, pr
       byDomain, byRarity, setValueRows, maxSetValue,
       topCards: valuedCards.slice(0, 12),
     };
-  }, [allCards, collection, foilCollection, prices]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allCards, collection, foilCollection, prices, game]);
 
   return (
     <div className="stats-wrap">
@@ -109,7 +115,7 @@ export default function Stats({ allCards, collection, foilCollection, prices, pr
       <div className="stats-grid">
         {/* Completion by domain */}
         <div className="stats-panel">
-          <h2>Completion by domain</h2>
+          <h2>Completion by {game.faction.label.toLowerCase()}</h2>
           {DOMAINS.filter(d => stats.byDomain[d].total > 0).map(d => (
             <BarRow
               key={d}
@@ -127,10 +133,10 @@ export default function Stats({ allCards, collection, foilCollection, prices, pr
           {RARITIES.filter(r => stats.byRarity[r].total > 0).map(r => (
             <BarRow
               key={r}
-              label={r.charAt(0).toUpperCase() + r.slice(1)}
+              label={title(r)}
               owned={stats.byRarity[r].owned}
               total={stats.byRarity[r].total}
-              color={`var(--r-${r})`}
+              color={`var(--r-${slug(r)})`}
             />
           ))}
         </div>

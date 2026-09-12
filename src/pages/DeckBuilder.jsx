@@ -1,44 +1,25 @@
 import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
-import { isSingleton, isAlwaysFoil } from '../utils/playset';
-import { ownedTotal, unitPrice, fmt$, PROMO_FOLD_SETS } from '../utils/analysis';
+import { isAlwaysFoil } from '../utils/playset';
+import { ownedTotal, unitPrice, fmt$ } from '../utils/analysis';
 import { exportDeckImage, exportSidingImage } from '../utils/deckImage';
 import { buildNameMap, deckFromImport } from '../utils/parseDeckList';
 import { indexPrintings, printingLabel } from '../utils/printings';
-
-const IMPORT_PLACEHOLDER = `Paste a decklist (works with this app's export or
-plain text from other sites):
-
-Legend:
-1 Pyke, Bloodharbor Ripper
-
-MainDeck:
-3 Sneaky Deckhand
-3 Tideturner
-
-Runes:
-6 Fury Rune
-6 Chaos Rune
-
-Sideboard:
-2 Downwell`;
+import { useGame } from '../games/GameContext';
 
 // Deck shape (v2):
-// { id, name, updatedAt, legendId, championId,
+// { id, name, updatedAt, legendId, legendIds, championId,
 //   main: {cardId:qty}, sideboard: {cardId:qty}, bench: {cardId:qty},
 //   runes: {domain:count}, tags: {cardId:label}, arts: {cardId:printingId} }
+//
+// The deck's "identity" is game-specific (see game.deck.identity): Riftbound
+// keeps a single `legendId` (+ chosen `championId`), Cyberpunk keeps three
+// `legendIds`. Everything else — zones, sizes, validation, decklist text —
+// reads from `game.deck` so this builder serves every game.
 //
 // `arts` is purely cosmetic — it picks which printing's image renders for a card.
 // Deck contents, pricing and ownership always track the card id in the zone maps.
 
-const MAIN_TARGET = 40;
-const SIDEBOARD_MAX = 10;
-const RUNE_TARGET = 12;
-
-const ELEMENTAL_DOMAINS = ['Body', 'Calm', 'Chaos', 'Fury', 'Mind', 'Order'];
 const TAGS = ['core', 'amazing', 'flex', 'bad'];
-// Type quick-filter chips for the card library (matches classification.type,
-// except 'Champion' which is a supertype).
-const LIB_TYPES = ['Legend', 'Champion', 'Unit', 'Spell', 'Gear', 'Rune', 'Battlefield'];
 const TAG_COLOR = { core: 'var(--accent)', amazing: 'var(--ok)', flex: 'var(--warn)', bad: 'var(--miss)' };
 
 // Art popover footprint, in sync with .db-art-pop in pages.css — the popover is
@@ -76,17 +57,16 @@ function fmtLogTime(ts) {
   return new Date(ts).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
-// Aggregate deck stats over the main deck + battlefields: energy curve,
-// card-type composition, domain distribution, and tag counts.
-function computeDeckStats(analysis, deck) {
-  const MAXE = 7; // bucket 7+ together
+// Aggregate deck stats over the main deck + battlefields: cost curve,
+// card-type composition, domain/color distribution, and tag counts.
+function computeDeckStats(analysis, deck, R) {
+  const MAXE = R.curveMax; // bucket MAXE+ together
   const curve = new Array(MAXE + 1).fill(0);
-  const types = { Champion: 0, Unit: 0, Spell: 0, Gear: 0, Battlefield: 0 };
+  const types = Object.fromEntries(R.statTypes.map(([, k]) => [k, 0]));
   const domains = {};
   let energySum = 0, energyCards = 0;
   for (const { card, qty } of [...analysis.mainRows, ...analysis.battlefieldRows]) {
-    if (card.classification?.supertype === 'Champion') types.Champion += qty;
-    else { const t = card.classification?.type; if (t in types) types[t] += qty; }
+    const t = R.typeOf(card); if (t in types) types[t] += qty;
     const e = card.attributes?.energy;
     if (e != null) { curve[Math.min(e, MAXE)] += qty; energySum += e * qty; energyCards += qty; }
     for (const dm of card.classification?.domain ?? []) domains[dm] = (domains[dm] ?? 0) + qty;
@@ -99,28 +79,12 @@ function computeDeckStats(analysis, deck) {
   };
 }
 
-function deckCap(card) {
-  if (isSingleton(card)) return 1; // Legend / Battlefield
-  return 3;
-}
-
-function legendDomains(card) {
-  return (card?.classification?.domain ?? []).filter(d => ELEMENTAL_DOMAINS.includes(d));
-}
-
-function prepopulateRunes(domains) {
-  const runes = {};
-  const n = domains.length;
-  if (!n) return runes;
-  const base = Math.floor(RUNE_TARGET / n);
-  let rem = RUNE_TARGET - base * n;
-  for (const d of domains) runes[d] = base + (rem-- > 0 ? 1 : 0);
-  return runes;
-}
+// CSS color key for a faction pill: "Fury" → fury, "Red · 2 RAM" → red.
+const factionKey = (label) => String(label).split(/[\s·]/)[0].toLowerCase();
 
 const newDeckObj = () => ({
   id: uid(), name: 'Untitled Deck', updatedAt: Date.now(),
-  legendId: null, championId: null,
+  legendId: null, legendIds: [], championId: null,
   main: {}, sideboard: {}, bench: {}, runes: {}, tags: {}, arts: {},
   notes: '', noteLog: [], log: [], matches: [], siding: [],
 });
@@ -128,7 +92,7 @@ const newDeckObj = () => ({
 // Ensure a deck has all v2 fields, migrating an old { cards } deck if needed.
 function normalizeDeck(deck, cardById) {
   const d = {
-    legendId: null, championId: null, main: {}, sideboard: {}, bench: {}, runes: {}, tags: {}, arts: {},
+    legendId: null, legendIds: [], championId: null, main: {}, sideboard: {}, bench: {}, runes: {}, tags: {}, arts: {},
     notes: '', noteLog: [], log: [], matches: [], siding: [],
     ...deck,
   };
@@ -152,14 +116,25 @@ export default function DeckBuilder({
   allCards, collection, foilCollection, prices, pricesLoading,
   decks, setDecks, onOpenModal, newDeckLegend, onNewDeckConsumed,
 }) {
+  const game = useGame();
+  const R = game.deck;
+  const multi = R.identity.kind === 'multi';
+  const deckCap = R.copyCap;
+  // Identity accessors — hide single-legend vs multi-legend storage.
+  const identityIds = (d) => (multi ? (d?.legendIds ?? []) : (d?.legendId ? [d.legendId] : []));
+  const withIdentity = (d, ids) => (multi ? { ...d, legendIds: ids } : { ...d, legendId: ids[0] ?? null });
+
   const [activeId, setActiveId] = useState(null); // null → deck gallery; id → builder
   const [libFilter, setLibFilter] = useState('');   // library search text
   const [libType, setLibType] = useState('');        // library type quick-filter ('' = all)
+  const [libShowAll, setLibShowAll] = useState(false);     // ignore the identity filter (flag tiles instead)
+  const [libBrowseIdentity, setLibBrowseIdentity] = useState(false); // revisit step 1 after it's complete
   const [view, setView] = useState('build');         // center view: 'build' | 'details'
   const [collapsed, setCollapsed] = useState({});     // collapsed deck-panel sections
   const toggleCollapse = (key) => setCollapsed(c => ({ ...c, [key]: !c[key] }));
   const [copied, setCopied] = useState(false);
   const [imgBusy, setImgBusy] = useState(false);
+  const [imgBench, setImgBench] = useState(false); // include the bench in the deck image
   // In-progress match entry (opponent legend, game result, dice-roll result).
   const [mOpp, setMOpp] = useState('');
   const [mResult, setMResult] = useState('W');
@@ -184,17 +159,16 @@ export default function DeckBuilder({
     if (startedRef.current) return;
     startedRef.current = true;
     const legend = newDeckLegend;
-    const domains = legendDomains(legend);
     const deck = {
-      ...newDeckObj(),
+      ...withIdentity(newDeckObj(), [legend.id]),
       name: legend.name,
-      legendId: legend.id,
-      runes: domains.length ? prepopulateRunes(domains) : {},
+      runes: R.seedRunes ? R.seedRunes([legend]) : {},
       log: [{ ts: Date.now(), cat: 'legend', text: `Set legend: ${legend.name}` }],
     };
     setDecks(prev => [deck, ...prev]);
     setActiveId(deck.id);
     onNewDeckConsumed?.();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newDeckLegend, setDecks, onNewDeckConsumed]);
 
   const cardById = useMemo(() => {
@@ -226,8 +200,8 @@ export default function DeckBuilder({
 
   // Live preview of a pasted decklist — same parser the Deck Check uses.
   const importPreview = useMemo(
-    () => (importText.trim() ? deckFromImport(importText, nameMap) : null),
-    [importText, nameMap],
+    () => (importText.trim() ? deckFromImport(importText, nameMap, game) : null),
+    [importText, nameMap, game],
   );
 
   // Legends for the opponent dropdown — one per name (a legend can be reprinted
@@ -238,14 +212,14 @@ export default function DeckBuilder({
       && !/\((Signature|Overnumbered|Metal)\)/i.test(c.name));
     // Base printings first so they win the de-dupe.
     candidates.sort((a, b) =>
-      (PROMO_FOLD_SETS.has(a.set?.set_id) ? 1 : 0) - (PROMO_FOLD_SETS.has(b.set?.set_id) ? 1 : 0));
+      (game.promoFoldSets.has(a.set?.set_id) ? 1 : 0) - (game.promoFoldSets.has(b.set?.set_id) ? 1 : 0));
     const byName = new Map();
     for (const c of candidates) {
       const key = c.name.toLowerCase().trim();
       if (!byName.has(key)) byName.set(key, c);
     }
     return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
-  }, [allCards]);
+  }, [allCards, game]);
 
   const rawActive = decks.find(d => d.id === activeId) ?? null;
   const active = rawActive ? normalizeDeck(rawActive, cardById) : null;
@@ -265,12 +239,11 @@ export default function DeckBuilder({
     setActiveId(deck.id);
   }
   function importDeck() {
-    const res = deckFromImport(importText, nameMap);
+    const res = deckFromImport(importText, nameMap, game);
     if (res.matchedCount === 0) return; // nothing recognized
     const deck = {
-      ...newDeckObj(),
+      ...withIdentity(newDeckObj(), res.legendIds),
       name: res.name || 'Imported Deck',
-      legendId: res.legendId,
       championId: res.championId,
       main: res.main,
       sideboard: res.sideboard,
@@ -278,8 +251,8 @@ export default function DeckBuilder({
       log: [{ ts: Date.now(), cat: 'import', text: `Imported ${res.matchedCount} card${res.matchedCount !== 1 ? 's' : ''}${res.unknown.length ? ` · ${res.unknown.length} line${res.unknown.length !== 1 ? 's' : ''} unmatched` : ''}` }],
     };
     // No runes in the list but we know the legend? Seed from its domains.
-    if (sumQty(deck.runes) === 0 && deck.legendId) {
-      deck.runes = prepopulateRunes(legendDomains(cardById.get(deck.legendId)));
+    if (R.seedRunes && sumQty(deck.runes) === 0 && identityIds(deck).length) {
+      deck.runes = R.seedRunes(identityIds(deck).map(id => cardById.get(id)).filter(Boolean));
     }
     setDecks(prev => [deck, ...prev]);
     setActiveId(deck.id);
@@ -304,7 +277,7 @@ export default function DeckBuilder({
     mutate(active.id, d => {
       const z = { ...d[zone] };
       // Enforce sideboard size limit on increments.
-      if (zone === 'sideboard' && delta > 0 && sumQty(z) >= SIDEBOARD_MAX) return d;
+      if (zone === 'sideboard' && delta > 0 && sumQty(z) >= R.sideboardMax) return d;
       const prev = z[cardId] ?? 0;
       const next = Math.max(0, Math.min(cap, prev + delta));
       if (next === prev) return d; // no actual change (e.g. at cap or 0)
@@ -328,7 +301,7 @@ export default function DeckBuilder({
       const src = { ...d[from] };
       const dst = { ...d[to] };
       if (!src[cardId]) return d;
-      if (to === 'sideboard' && sumQty(dst) >= SIDEBOARD_MAX) return d;
+      if (to === 'sideboard' && sumQty(dst) >= R.sideboardMax) return d;
       src[cardId] -= 1; if (src[cardId] <= 0) delete src[cardId];
       dst[cardId] = Math.min(cap, (dst[cardId] ?? 0) + 1);
       return withLog({ ...d, [from]: src, [to]: dst }, `Moved ${name}: ${ZONE_LABEL[from]} → ${ZONE_LABEL[to]}`, 'move');
@@ -338,34 +311,49 @@ export default function DeckBuilder({
   function addCard(card) {
     if (!active) return;
     if (card.classification?.type === 'Legend') {
-      setLegend(card);
+      addIdentity(card);
       return;
     }
     adjustZone('main', card.id, +1);
   }
 
-  function setLegend(card) {
+  // Add a Legend to the deck's identity. Single-legend games replace the
+  // current legend; multi-legend games append up to the game's max, refusing
+  // duplicates by name.
+  function addIdentity(card) {
     mutate(active.id, d => {
-      if (d.legendId === card.id) return d;
-      const patch = { ...d, legendId: card.id };
+      const ids = identityIds(d);
+      if (ids.includes(card.id)) return d;
+      let next, text;
+      if (multi) {
+        if (ids.length >= R.identity.max) return d;
+        const key = R.identity.uniqueBy?.(card);
+        if (key && ids.some(id => R.identity.uniqueBy(cardById.get(id) ?? {}) === key)) return d;
+        next = [...ids, card.id];
+        text = `Added legend: ${card.name}`;
+      } else {
+        next = [card.id];
+        text = ids.length ? `Changed legend → ${card.name}` : `Set legend: ${card.name}`;
+      }
+      const patch = withIdentity(d, next);
       // Prepopulate the rune deck from the legend's domains if untouched.
-      if (sumQty(d.runes) === 0) patch.runes = prepopulateRunes(legendDomains(card));
-      const text = d.legendId
-        ? `Changed legend → ${card.name}` : `Set legend: ${card.name}`;
+      if (R.seedRunes && sumQty(d.runes) === 0) patch.runes = R.seedRunes([card]);
       return withLog(patch, text, 'legend');
     });
     resetLibFilters(); // moving to step 2 — drop any legend-name filter
   }
-  function clearLegend() {
-    mutate(active.id, d => d.legendId
-      ? withLog({ ...d, legendId: null }, `Removed legend: ${cardById.get(d.legendId)?.name ?? ''}`, 'legend')
-      : d);
+  function removeIdentity(cardId) {
+    mutate(active.id, d => {
+      const ids = identityIds(d);
+      if (!ids.includes(cardId)) return d;
+      return withLog(withIdentity(d, ids.filter(id => id !== cardId)), `Removed legend: ${cardById.get(cardId)?.name ?? ''}`, 'legend');
+    });
     resetLibFilters(); // back to step 1
   }
 
   function resetRunesFromLegend() {
-    const legend = cardById.get(active.legendId);
-    mutate(active.id, d => withLog({ ...d, runes: prepopulateRunes(legendDomains(legend)) }, 'Reset runes from legend', 'rune'));
+    const cards = identityIds(active).map(id => cardById.get(id)).filter(Boolean);
+    mutate(active.id, d => withLog({ ...d, runes: R.seedRunes(cards) }, 'Reset runes from legend', 'rune'));
   }
   function adjustRune(domain, delta) {
     mutate(active.id, d => {
@@ -490,23 +478,22 @@ export default function DeckBuilder({
   // excluded (step 2), filtered by name/tags and an optional type chip.
   // Match name OR tags — champion identity (e.g. "Kennen") lives in tags,
   // since legend cards are named by title ("Heart of the Tempest").
-  const hasLegend = !!active?.legendId;
-  const legendCard = hasLegend ? cardById.get(active.legendId) : null;
+  const activeIdentityIds = identityIds(active);
+  const identityCards = activeIdentityIds.map(id => cardById.get(id)).filter(Boolean);
+  const identityComplete = activeIdentityIds.length >= R.identity.max;
+  // Step 1 (pick identity) until the identity is complete; step 2 (add cards)
+  // after — unless the user chose to browse legends again.
+  const libStage = identityComplete && !libBrowseIdentity ? 'cards' : 'identity';
+  const hasLegend = libStage === 'cards';
   // Library results (plain function; React Compiler memoizes — see computeAnalysis).
   // Two-step flow: step 1 shows only legends; step 2 shows the rest of the pool,
-  // restricted to cards playable in the chosen legend's domains.
+  // restricted to cards playable under the chosen identity (game.deck.libraryFilter).
   function computeLibResults() {
     const q = libFilter.toLowerCase().trim();
-    const typeOf = (c) => c.classification?.supertype === 'Champion' ? 'Champion' : c.classification?.type;
-    const TYPE_ORDER = { Champion: 0, Unit: 1, Spell: 2, Gear: 3, Rune: 4, Battlefield: 5 };
+    const typeOf = R.typeOf;
+    const TYPE_ORDER = R.typeOrder;
     const matchQ = (c) => !q || c.name.toLowerCase().includes(q) || (c.tags ?? []).some(t => t.toLowerCase().includes(q));
-    // A card is playable if every elemental domain it has is one of the
-    // legend's domains; domainless/neutral cards are always allowed.
-    const legendSet = new Set(legendCard ? legendDomains(legendCard) : []);
-    const inLegendDomains = (c) =>
-      (c.classification?.domain ?? [])
-        .filter(d => ELEMENTAL_DOMAINS.includes(d))
-        .every(d => legendSet.has(d));
+    const playable = (c) => R.libraryFilter(c, identityCards);
     return allCards
       .filter(c => {
         // One tile per card: alt arts, premiums and promo reprints are separate
@@ -516,27 +503,30 @@ export default function DeckBuilder({
         const isLegend = c.classification?.type === 'Legend';
         if (!hasLegend) return isLegend && matchQ(c);       // step 1 — legends only
         if (isLegend) return false;                         // step 2 — everything but legends
-        if (!inLegendDomains(c)) return false;              // only the legend's domains
+        if (!libShowAll && !playable(c)) return false;      // only what the identity allows
         if (libType && typeOf(c) !== libType) return false;
         return matchQ(c);
       })
+      .map(c => ({ card: c, flagged: libShowAll && !playable(c) }))
       .sort((a, b) =>
-        (TYPE_ORDER[typeOf(a)] ?? 9) - (TYPE_ORDER[typeOf(b)] ?? 9) ||
-        (a.attributes?.energy ?? 99) - (b.attributes?.energy ?? 99) ||
-        a.name.localeCompare(b.name));
+        (TYPE_ORDER[typeOf(a.card)] ?? 9) - (TYPE_ORDER[typeOf(b.card)] ?? 9) ||
+        (a.card.attributes?.energy ?? 99) - (b.card.attributes?.energy ?? 99) ||
+        a.card.name.localeCompare(b.card.name));
   }
   const libResults = computeLibResults();
 
   // Clear the library filter/type — called when the step flips (legend
   // set/removed) or the active deck changes, so a stale filter doesn't linger.
-  const resetLibFilters = useCallback(() => { setLibFilter(''); setLibType(''); }, []);
+  const resetLibFilters = useCallback(() => {
+    setLibFilter(''); setLibType(''); setLibShowAll(false); setLibBrowseIdentity(false);
+  }, []);
 
   // How many copies of a card the active deck already holds (across every zone,
   // counting the legend/champion slots) — drives the library "in deck" badge/cap.
   function qtyInDeck(cardId) {
     if (!active) return 0;
     let n = (active.main[cardId] ?? 0) + (active.sideboard[cardId] ?? 0) + (active.bench[cardId] ?? 0);
-    if (active.legendId === cardId) n += 1;
+    if (activeIdentityIds.includes(cardId)) n += 1;
     return n;
   }
 
@@ -544,7 +534,7 @@ export default function DeckBuilder({
   function computeAnalysis() {
     if (!active) return null;
     const zoneCard = (id) => cardById.get(id);
-    const legend = active.legendId ? zoneCard(active.legendId) : null;
+    const legend = identityCards[0] ?? null;
 
     const mainRows = [];
     const battlefieldRows = [];
@@ -552,7 +542,7 @@ export default function DeckBuilder({
     for (const [id, qty] of Object.entries(active.main)) {
       const card = zoneCard(id); if (!card) continue;
       const row = { card, qty, owned: ownedTotal(card, collection, foilCollection), price: unitPrice(card, prices) };
-      if (card.classification?.type === 'Battlefield') battlefieldRows.push(row);
+      if (R.hasBattlefields && card.classification?.type === 'Battlefield') battlefieldRows.push(row);
       else { mainRows.push(row); mainCount += qty; }
     }
     const sortRows = (rows) => rows.sort((a, b) =>
@@ -572,16 +562,16 @@ export default function DeckBuilder({
       const short = Math.max(0, qty - ownedTotal(card, collection, foilCollection));
       if (short > 0) { missingCost += price * short; missing.push({ card, short, price }); }
     }
-    if (legend) {
-      const short = Math.max(0, 1 - ownedTotal(legend, collection, foilCollection));
-      const lp = unitPrice(legend, prices) ?? 0;
+    for (const idCard of identityCards) {
+      const short = Math.max(0, 1 - ownedTotal(idCard, collection, foilCollection));
+      const lp = unitPrice(idCard, prices) ?? 0;
       deckValue += lp;
-      if (short > 0) { missingCost += lp; missing.push({ card: legend, short, price: lp }); }
+      if (short > 0) { missingCost += lp; missing.push({ card: idCard, short, price: lp }); }
     }
     missing.sort((a, b) => (b.price ?? 0) * b.short - (a.price ?? 0) * a.short);
 
     return {
-      legend,
+      legend, identityCards,
       mainRows, battlefieldRows,
       sideboardRows: zoneRows('sideboard'), benchRows: zoneRows('bench'),
       mainCount, runeCount: sumQty(active.runes), sideboardCount: sumQty(active.sideboard),
@@ -604,7 +594,8 @@ export default function DeckBuilder({
   const mDiceWins = matches.filter(m => m.dice === 'W').length;
   const mDiceLosses = matches.length - mDiceWins;
 
-  const stats = analysis ? computeDeckStats(analysis, active) : null;
+  const stats = analysis ? computeDeckStats(analysis, active, R) : null;
+  const checklist = analysis ? R.validate({ deck: active, analysis, identityCards, champion }) : [];
   const hasTags = stats && Object.values(stats.tags).some(n => n > 0);
   const domainEntries = stats ? Object.entries(stats.domains).sort((a, b) => b[1] - a[1]) : [];
   const maxDomain = domainEntries.length ? domainEntries[0][1] : 1;
@@ -612,31 +603,7 @@ export default function DeckBuilder({
   // Build the plain-text decklist — the exact section format the importer reads.
   function buildDecklistText() {
     if (!active || !analysis) return '';
-    let out = '';
-    if (analysis.legend) out += `Legend:\n1 ${analysis.legend.name}\n\n`;
-    if (champion) out += `Champion:\n1 ${champion.name}\n\n`;
-    if (analysis.mainRows.length) {
-      out += 'MainDeck:\n';
-      for (const { card, qty } of analysis.mainRows) out += `${qty} ${card.name}\n`;
-      out += '\n';
-    }
-    if (analysis.battlefieldRows.length) {
-      out += 'Battlefields:\n';
-      for (const { card, qty } of analysis.battlefieldRows) out += `${qty} ${card.name}\n`;
-      out += '\n';
-    }
-    const runeEntries = Object.entries(active.runes).filter(([, n]) => n > 0);
-    if (runeEntries.length) {
-      out += 'Runes:\n';
-      for (const [domain, n] of runeEntries) out += `${n} ${domain} Rune\n`;
-      out += '\n';
-    }
-    if (analysis.sideboardRows.length) {
-      out += 'Sideboard:\n';
-      for (const { card, qty } of analysis.sideboardRows) out += `${qty} ${card.name}\n`;
-      out += '\n';
-    }
-    return out.trimEnd();
+    return R.buildDecklistText({ deck: active, analysis, identityCards, champion });
   }
 
   async function copyDecklist() {
@@ -654,11 +621,18 @@ export default function DeckBuilder({
     // the chosen printing carries a variant suffix we don't want on the image.
     const asShown = (card) => card && { ...card, media: artOf(card).media };
     try {
+      const identity = identityCards.map(c => [R.identity.kind === 'multi' ? 'Legend' : R.identity.label, asShown(c)]);
+      if (R.hasChampion && champion) identity.push(['Champion', asShown(champion)]);
+      const shown = (rows) => rows.map(r => ({ ...r, card: asShown(r.card) }));
       await exportDeckImage({
         deckName: active.name,
-        legend: asShown(analysis.legend),
-        champion: asShown(champion),
-        mainRows: analysis.mainRows.map(r => ({ ...r, card: asShown(r.card) })),
+        identity,
+        sections: [
+          { label: 'Main Deck', rows: shown(analysis.mainRows) },
+          { label: 'Battlefields', rows: shown(analysis.battlefieldRows) },
+          { label: 'Sideboard', rows: shown(analysis.sideboardRows) },
+          ...(imgBench ? [{ label: 'Bench', rows: shown(analysis.benchRows) }] : []),
+        ],
       });
     } catch (e) {
       window.alert(`Image export failed — a card image blocked the canvas. ${e?.message ?? ''}`);
@@ -819,15 +793,16 @@ export default function DeckBuilder({
   }
 
   // A library grid tile — click to add the card to the deck.
-  function renderLibTile(card) {
+  function renderLibTile({ card, flagged }) {
     const inDeck = qtyInDeck(card.id);
-    const atCap = inDeck >= deckCap(card);
     const isLegend = card.classification?.type === 'Legend';
-    const kind = card.classification?.supertype === 'Champion' ? 'Champion' : card.classification?.type;
+    // A legend that isn't in the deck is still blocked once the identity is full.
+    const atCap = inDeck >= deckCap(card) || (isLegend && multi && inDeck === 0 && identityComplete);
+    const kind = R.typeOf(card);
     return (
       <button
         key={card.id}
-        className={`db-lib-tile${inDeck > 0 ? ' in-deck' : ''}${atCap ? ' at-cap' : ''}`}
+        className={`db-lib-tile${inDeck > 0 ? ' in-deck' : ''}${atCap ? ' at-cap' : ''}${flagged ? ' flagged' : ''}`}
         onClick={() => addCard(card)}
         disabled={atCap}
         title={atCap ? `${card.name} — at max (${deckCap(card)})` : `Add ${card.name}`}
@@ -837,6 +812,7 @@ export default function DeckBuilder({
             ? <img src={card.media.image_url} alt={card.name} loading="lazy" />
             : <span className="db-lib-ph">{card.name}</span>}
           {inDeck > 0 && <span className="db-lib-count">{isLegend ? '✓' : `×${inDeck}`}</span>}
+          {flagged && <span className="db-lib-flag" title="Outside your legends' budget">{R.libraryFilterBadge}</span>}
           {!atCap && <span className="db-lib-add">＋</span>}
         </span>
         <span className="db-lib-name" title={card.name}>{card.name}</span>
@@ -936,7 +912,7 @@ export default function DeckBuilder({
               className="deck-textarea db-import-text"
               value={importText}
               onChange={e => setImportText(e.target.value)}
-              placeholder={IMPORT_PLACEHOLDER}
+              placeholder={R.importPlaceholder}
               spellCheck={false}
             />
             {importPreview && (
@@ -968,11 +944,13 @@ export default function DeckBuilder({
           <div className="db-gallery-grid">
             {decks.map(d => {
               const nd = normalizeDeck(d, cardById);
-              const legend = nd.legendId ? cardById.get(nd.legendId) : null;
-              const champ = nd.championId ? cardById.get(nd.championId) : null;
+              const idCards = identityIds(nd).map(id => cardById.get(id)).filter(Boolean);
+              const legend = idCards[0] ?? null;
+              const champ = R.hasChampion && nd.championId ? cardById.get(nd.championId) : null;
               const count = sumQty(nd.main);
               // Gallery art follows the deck's chosen legend printing.
               const legendArt = legend && (cardById.get(nd.arts?.[legend.id]) ?? legend);
+              const identityText = idCards.length ? idCards.map(c => c.name).join(' · ') : 'No legend';
               return (
                 <button
                   key={d.id}
@@ -988,7 +966,7 @@ export default function DeckBuilder({
                   </span>
                   <span className="db-gallery-info">
                     <span className="db-gallery-name">{d.name}</span>
-                    <span className="db-gallery-sub">{legend ? legend.name : 'No legend'}{champ ? ` · ★ ${champ.name}` : ''}</span>
+                    <span className="db-gallery-sub">{identityText}{champ ? ` · ★ ${champ.name}` : ''}</span>
                   </span>
                 </button>
               );
@@ -1030,17 +1008,15 @@ export default function DeckBuilder({
               <div className="db-lib-step">
                 {hasLegend ? (
                   <>
-                    <span className="db-lib-step-n">Step 2</span> Add cards — showing your legend's domains:
-                    {legendCard && legendDomains(legendCard).length > 0 && (
-                      <span className="db-legend-domains">
-                        {legendDomains(legendCard).map(dm => (
-                          <span key={dm} className="db-domain-pill" style={{ color: `var(--d-${dm.toLowerCase()})` }}>{dm}</span>
-                        ))}
-                      </span>
-                    )}
+                    <span className="db-lib-step-n">Step 2</span> {R.stepCopy.addCards}
+                    <span className="db-legend-domains">
+                      {identityCards.flatMap(c => R.identityFactions(c)).map((dm, i) => (
+                        <span key={`${dm}-${i}`} className="db-domain-pill" style={{ color: `var(--d-${factionKey(dm)})` }}>{dm}</span>
+                      ))}
+                    </span>
                   </>
                 ) : (
-                  <><span className="db-lib-step-n">Step 1</span> Pick your legend — it sets your domains and rune deck.</>
+                  <><span className="db-lib-step-n">Step 1</span> {R.stepCopy.pickIdentity}{multi ? ` (${activeIdentityIds.length}/${R.identity.max} chosen)` : ''}</>
                 )}
               </div>
               <div className="db-lib-toolbar">
@@ -1053,7 +1029,7 @@ export default function DeckBuilder({
                 />
                 {hasLegend && (
                   <div className="db-lib-chips">
-                    {LIB_TYPES.filter(t => t !== 'Legend').map(t => (
+                    {R.libraryTypes.filter(t => t !== 'Legend').map(t => (
                       <button
                         key={t}
                         className={`db-lib-chip${libType === t ? ' active' : ''}`}
@@ -1063,6 +1039,23 @@ export default function DeckBuilder({
                       </button>
                     ))}
                     {libType && <button className="db-lib-chip clear" onClick={() => setLibType('')}>Clear</button>}
+                    {R.libraryFilterToggle && (
+                      <button
+                        className={`db-lib-chip${libShowAll ? ' active' : ''}`}
+                        title="Also show cards your legends can't pay for (flagged)"
+                        onClick={() => setLibShowAll(v => !v)}
+                      >
+                        Show all
+                      </button>
+                    )}
+                    {multi && (
+                      <button className="db-lib-chip" onClick={() => setLibBrowseIdentity(true)}>{R.identity.label}</button>
+                    )}
+                  </div>
+                )}
+                {!hasLegend && multi && identityComplete && (
+                  <div className="db-lib-chips">
+                    <button className="db-lib-chip active" onClick={() => setLibBrowseIdentity(false)}>← Back to cards</button>
                   </div>
                 )}
                 <span className="db-lib-total">{libResults.length} {hasLegend ? 'cards' : 'legends'}</span>
@@ -1077,13 +1070,13 @@ export default function DeckBuilder({
               <div className="db-stats-grid">
                 {/* Energy curve */}
                 <div className="deck-stat-card">
-                  <h3>Energy curve <span className="db-stat-sub">avg {stats.avgEnergy.toFixed(1)}</span></h3>
+                  <h3>{R.costLabel} curve <span className="db-stat-sub">avg {stats.avgEnergy.toFixed(1)}</span></h3>
                   <div className="db-curve">
                     {stats.curve.map((n, e) => (
                       <div key={e} className="db-curve-col">
                         <span className="db-curve-n">{n || ''}</span>
                         <div className="db-curve-track"><div className="db-curve-bar" style={{ height: `${(n / stats.maxCurve) * 100}%` }} /></div>
-                        <span className="db-curve-x">{e === 7 ? '7+' : e}</span>
+                        <span className="db-curve-x">{e === R.curveMax ? `${e}+` : e}</span>
                       </div>
                     ))}
                   </div>
@@ -1093,7 +1086,7 @@ export default function DeckBuilder({
                 <div className="deck-stat-card">
                   <h3>Composition</h3>
                   <div className="db-stat-rows">
-                    {[['Champions', 'Champion'], ['Units', 'Unit'], ['Spells', 'Spell'], ['Gear', 'Gear'], ['Battlefields', 'Battlefield']]
+                    {R.statTypes
                       .filter(([, k]) => stats.types[k] > 0)
                       .map(([label, k]) => (
                         <div key={k} className="db-stat-row"><span>{label}</span><span>{stats.types[k]}</span></div>
@@ -1105,7 +1098,7 @@ export default function DeckBuilder({
                 {/* Domains */}
                 {domainEntries.length > 0 && (
                   <div className="deck-stat-card">
-                    <h3>Domains</h3>
+                    <h3>{R.factionLabel}</h3>
                     <div className="db-stat-rows">
                       {domainEntries.map(([dm, n]) => (
                         <div key={dm} className="db-domain-stat">
@@ -1170,7 +1163,7 @@ export default function DeckBuilder({
                     {matches.length > 0 && <span className="db-record-pct">{mWinPct}%</span>}
                   </div>
                   <div className="db-record-dice">Dice roll <b>{mDiceWins}</b>–<b>{mDiceLosses}</b></div>
-                  {analysis.legend && <div className="db-record-legend">as {analysis.legend.name}</div>}
+                  {identityCards.length > 0 && <div className="db-record-legend">as {identityCards.map(c => c.name).join(' · ')}</div>}
                 </div>
 
                 <div className="db-match-add">
@@ -1348,47 +1341,51 @@ export default function DeckBuilder({
         <aside className="db-deck-panel">
           {/* Deck check */}
           <ul className="db-checklist">
-            <li className={active.legendId ? 'ok' : 'bad'}>{active.legendId ? '✓' : '○'} Legend</li>
-            <li className={champion ? 'ok' : 'bad'}>{champion ? '✓' : '○'} Chosen champion</li>
-            <li className={analysis.mainCount === MAIN_TARGET ? 'ok' : 'bad'}>
-              {analysis.mainCount === MAIN_TARGET ? '✓' : '○'} Main {analysis.mainCount}/{MAIN_TARGET}
-            </li>
-            <li className={analysis.runeCount === RUNE_TARGET ? 'ok' : 'bad'}>
-              {analysis.runeCount === RUNE_TARGET ? '✓' : '○'} Runes {analysis.runeCount}/{RUNE_TARGET}
-            </li>
-            <li className={analysis.sideboardCount <= SIDEBOARD_MAX ? 'ok' : 'bad'}>
-              {analysis.sideboardCount <= SIDEBOARD_MAX ? '✓' : '✕'} SB {analysis.sideboardCount}/{SIDEBOARD_MAX}
-            </li>
+            {checklist.map(row => (
+              <li
+                key={row.key}
+                className={row.warn ? 'warn' : row.ok ? 'ok' : `bad${row.key.startsWith('ram') ? ' violation' : ''}`}
+              >
+                {row.warn ? '⚠' : row.ok ? '✓' : row.over || row.key.startsWith('ram') ? '✕' : '○'} {row.label}
+              </li>
+            ))}
           </ul>
 
-          {/* Legend + Chosen Champion, side by side */}
+          {/* Identity: Legend(s) + (Riftbound) Chosen Champion */}
           <div className="db-panel-identity">
             <div className="db-identity-slot">
-              <div className="db-identity-label">Legend</div>
-              {analysis.legend ? (
-                <div className="db-mini-card">
-                  <button className="db-mini-img" onClick={() => onOpenModal?.(analysis.legend)} title="View details">
-                    {artOf(analysis.legend).media?.image_url
-                      ? <img src={artOf(analysis.legend).media.image_url} alt={analysis.legend.name} loading="lazy" />
-                      : <span className="db-line-ph">{analysis.legend.name.slice(0, 2)}</span>}
-                  </button>
-                  {renderArtPicker(analysis.legend, 'slot', 'legend')}
-                  <div className="db-mini-info">
-                    <span className="db-mini-name">{analysis.legend.name}</span>
-                    <span className="db-legend-domains">
-                      {legendDomains(analysis.legend).map(dm => (
-                        <span key={dm} className="db-domain-pill" style={{ color: `var(--d-${dm.toLowerCase()})` }}>{dm}</span>
-                      ))}
-                    </span>
-                    <button className="btn ghost danger db-mini-remove" onClick={clearLegend}>Remove</button>
-                  </div>
+              <div className="db-identity-label">{R.identity.label}{multi ? ` ${identityCards.length}/${R.identity.max}` : ''}</div>
+              {identityCards.length ? (
+                <div className="db-identity-list">
+                  {identityCards.map(idCard => (
+                    <div key={idCard.id} className="db-mini-card">
+                      <button className="db-mini-img" onClick={() => onOpenModal?.(idCard)} title="View details">
+                        {artOf(idCard).media?.image_url
+                          ? <img src={artOf(idCard).media.image_url} alt={idCard.name} loading="lazy" />
+                          : <span className="db-line-ph">{idCard.name.slice(0, 2)}</span>}
+                      </button>
+                      {renderArtPicker(idCard, 'slot', `identity-${idCard.id}`)}
+                      <div className="db-mini-info">
+                        <span className="db-mini-name">{idCard.name}</span>
+                        <span className="db-legend-domains">
+                          {R.identityFactions(idCard).map(dm => (
+                            <span key={dm} className="db-domain-pill" style={{ color: `var(--d-${factionKey(dm)})` }}>{dm}</span>
+                          ))}
+                        </span>
+                        <button className="btn ghost danger db-mini-remove" onClick={() => removeIdentity(idCard.id)}>Remove</button>
+                      </div>
+                    </div>
+                  ))}
+                  {multi && !identityComplete && (
+                    <div className="db-identity-empty">{R.identity.max - identityCards.length} more to pick.</div>
+                  )}
                 </div>
               ) : (
-                <div className="db-identity-empty">Click a <b>Legend</b> in the library — its domains set up your rune deck.</div>
+                <div className="db-identity-empty">{R.stepCopy.identityEmpty}</div>
               )}
             </div>
 
-            <div className="db-identity-slot">
+            {R.hasChampion && <div className="db-identity-slot">
               <div className="db-identity-label">Chosen Champion</div>
               {championOptions.length === 0 ? (
                 <div className="db-identity-empty">Add a <b>Champion</b> to your main deck, then pick it here.</div>
@@ -1411,16 +1408,18 @@ export default function DeckBuilder({
                   )}
                 </>
               )}
-            </div>
+            </div>}
           </div>
 
           {/* Deck list, grouped by zone — each section collapsible */}
           <div className="db-line-group">
             {zoneHead('main', 'Main Deck',
-              <span className={`db-section-count${analysis.mainCount > MAIN_TARGET ? ' over' : ''}`}>{analysis.mainCount} / {MAIN_TARGET}</span>)}
+              <span className={`db-section-count${analysis.mainCount > R.main.max ? ' over' : ''}`}>
+                {analysis.mainCount} / {R.main.min === R.main.max ? R.main.max : `${R.main.min}–${R.main.max}`}
+              </span>)}
             {!collapsed.main && (analysis.mainRows.length
               ? <div className="db-mini-grid">{renderZoneTiles(analysis.mainRows, 'main')}</div>
-              : <div className="db-zone-empty">Empty — add cards from the library. Set a chosen champion from a champion in your deck.</div>)}
+              : <div className="db-zone-empty">{R.stepCopy.mainEmpty}</div>)}
           </div>
 
           {analysis.battlefieldRows.length > 0 && (
@@ -1431,14 +1430,14 @@ export default function DeckBuilder({
             </div>
           )}
 
-          <div className="db-line-group">
+          {R.hasRunes && <div className="db-line-group">
             {zoneHead('runes', 'Rune Deck',
-              <span className={`db-section-count${analysis.runeCount > RUNE_TARGET ? ' over' : ''}`}>{analysis.runeCount} / {RUNE_TARGET}</span>)}
+              <span className={`db-section-count${analysis.runeCount > R.runeTarget ? ' over' : ''}`}>{analysis.runeCount} / {R.runeTarget}</span>)}
             {!collapsed.runes && (!analysis.legend ? (
               <div className="db-zone-empty">Add a legend to set up runes.</div>
             ) : (
               <div className="db-rune-deck">
-                {[...new Set([...legendDomains(analysis.legend), ...Object.keys(active.runes)])].map(dm => (
+                {[...new Set([...R.identityFactions(analysis.legend), ...Object.keys(active.runes)])].map(dm => (
                   <div key={dm} className="db-rune-row">
                     <span className="db-rune-name" style={{ color: `var(--d-${dm.toLowerCase()})` }}>
                       <span className="db-rune-dot" style={{ background: `var(--d-${dm.toLowerCase()})` }} />{dm}
@@ -1453,14 +1452,14 @@ export default function DeckBuilder({
                 <button className="btn ghost" style={{ marginTop: 4 }} onClick={resetRunesFromLegend}>↻ Reset from legend</button>
               </div>
             ))}
-          </div>
+          </div>}
 
           <div className="db-line-group">
             {zoneHead('sideboard', 'Sideboard',
-              <span className={`db-section-count${analysis.sideboardCount > SIDEBOARD_MAX ? ' over' : ''}`}>{analysis.sideboardCount} / {SIDEBOARD_MAX}</span>)}
+              <span className={`db-section-count${analysis.sideboardCount > R.sideboardMax ? ' over' : ''}`}>{analysis.sideboardCount} / {R.sideboardMax}</span>)}
             {!collapsed.sideboard && (analysis.sideboardRows.length
               ? <div className="db-mini-grid">{renderZoneTiles(analysis.sideboardRows, 'sideboard')}</div>
-              : <div className="db-zone-empty">Empty — move cards here with a card's <b>SB</b> button (max {SIDEBOARD_MAX}).</div>)}
+              : <div className="db-zone-empty">Empty — move cards here with a card's <b>SB</b> button (max {R.sideboardMax}).</div>)}
           </div>
 
           <div className="db-line-group">
@@ -1475,6 +1474,10 @@ export default function DeckBuilder({
           <div className="db-panel-export">
             <button className="btn" onClick={copyDecklist}>{copied ? '✓ Copied decklist' : 'Copy decklist'}</button>
             <button className="btn" onClick={exportImage} disabled={imgBusy}>{imgBusy ? 'Generating image…' : '🖼 Export image'}</button>
+            <label className="db-export-opt" title="Also draw the bench on the exported image">
+              <input type="checkbox" checked={imgBench} onChange={e => setImgBench(e.target.checked)} />
+              <span>Include bench</span>
+            </label>
           </div>
         </aside>
       )}

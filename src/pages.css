@@ -585,3 +585,13 @@
   .tm-row { grid-template-columns: 40px 1fr auto; grid-auto-rows: auto; }
   .tm-cell, .tm-remove { grid-column: 2 / -1; flex-direction: row; align-items: center; gap: 8px; }
 }
+
+/* Deck checklist extras (Cyberpunk RAM budget warnings) */
+.db-checklist li.warn { color: var(--warn); }
+.db-checklist li.bad.violation { color: var(--miss); }
+/* Library tile flagged as outside the deck's identity (e.g. over RAM budget) */
+.db-lib-tile.flagged .db-lib-art { opacity: 0.55; }
+.db-lib-flag { position: absolute; top: 6px; left: 6px; padding: 1px 6px; border-radius: 999px; background: var(--miss); color: #fff; font-size: 10px; font-weight: 800; font-family: var(--font-mono); letter-spacing: 0.04em; }
+.db-identity-list { display: flex; flex-direction: column; gap: 10px; }
+.db-export-opt { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); cursor: pointer; user-select: none; }
+.db-export-opt input { accent-color: var(--accent); }

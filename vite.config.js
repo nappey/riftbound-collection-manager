@@ -13,6 +13,12 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/tcgcsv/, ''),
       },
+      // Netdeck.gg card API (Cyberpunk TCG) — same browser-only fallback
+      '/netdeck': {
+        target: 'https://api.netdeck.gg',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/netdeck/, ''),
+      },
     },
   },
 })

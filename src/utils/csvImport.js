@@ -14,6 +14,19 @@ function parseCSVLine(line) {
   return result;
 }
 
+// Quote a value for a CSV cell.
+export function csvField(val) {
+  const s = String(val ?? '');
+  return s.includes(',') || s.includes('"') || s.includes('\n')
+    ? `"${s.replace(/"/g, '""')}"`
+    : s;
+}
+
+// Serialize rows (arrays of cells) as CRLF-delimited CSV.
+export function toCSV(rows) {
+  return rows.map(r => r.map(csvField).join(',')).join('\r\n');
+}
+
 export function parseCSV(text) {
   const lines = text.trim().split(/\r?\n/);
   const headers = parseCSVLine(lines[0]).map((h) => h.trim());

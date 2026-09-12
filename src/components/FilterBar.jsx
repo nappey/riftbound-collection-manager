@@ -1,8 +1,6 @@
 import { useMemo } from 'react';
+import { useGame } from '../games/GameContext';
 
-const TYPES = ['Unit', 'Spell', 'Gear', 'Legend', 'Battlefield'];
-const RARITIES = ['Common', 'Uncommon', 'Rare', 'Showcase'];
-const DOMAINS = ['Body', 'Calm', 'Chaos', 'Colorless', 'Fury', 'Mind', 'Order'];
 const STATUSES = [
   { value: 'all', label: 'All' },
   { value: 'owned', label: 'Owned' },
@@ -10,15 +8,15 @@ const STATUSES = [
   { value: 'playset', label: 'Playset ✓' },
   { value: 'incomplete', label: 'Incomplete' },
 ];
-const SORTS = [
+const sortsFor = (costLabel) => [
   { value: 'collector_number', label: 'Collector #' },
   { value: 'name', label: 'Name' },
   { value: 'rarity', label: 'Rarity' },
-  { value: 'energy', label: 'Energy' },
+  { value: 'energy', label: costLabel },
   { value: 'count', label: 'Owned count' },
 ];
 
-function FilterGroup({ label, options, value, allLabel = 'All', onChange, counts = {} }) {
+function FilterGroup({ label, options, value, allLabel = 'All', onChange, counts = {}, dotted = [] }) {
   return (
     <div className="filter-group">
       <div className="filter-group-head">
@@ -40,7 +38,7 @@ function FilterGroup({ label, options, value, allLabel = 'All', onChange, counts
               className={`chip${value === v ? ' active' : ''}`}
               onClick={() => onChange(value === v ? '' : v)}
             >
-              {v !== 'all' && DOMAINS.includes(v) && (
+              {v !== 'all' && dotted.includes(v) && (
                 <span className="chip-dot" style={{'--c': `var(--d-${v.toLowerCase()})`}}></span>
               )}
               {l}
@@ -54,6 +52,10 @@ function FilterGroup({ label, options, value, allLabel = 'All', onChange, counts
 }
 
 export default function FilterBar({ filters, sort, onChange, onSortChange, allCards = [] }) {
+  const game = useGame();
+  const factions = game.faction.neutral
+    ? [...game.faction.values, game.faction.neutral].sort()
+    : game.faction.values;
   function set(key, val) {
     onChange({ ...filters, [key]: val });
   }
@@ -75,24 +77,25 @@ export default function FilterBar({ filters, sort, onChange, onSortChange, allCa
     <aside className="sidebar">
       <FilterGroup
         label="Type"
-        options={TYPES}
+        options={game.types}
         value={filters.type}
         onChange={(v) => set('type', v)}
         counts={counts.t}
       />
       <FilterGroup
         label="Rarity"
-        options={RARITIES}
+        options={game.rarities}
         value={filters.rarity}
         onChange={(v) => set('rarity', v)}
         counts={counts.r}
       />
       <FilterGroup
-        label="Domain"
-        options={DOMAINS}
+        label={game.faction.label}
+        options={factions}
         value={filters.domain}
         onChange={(v) => set('domain', v)}
         counts={counts.d}
+        dotted={factions}
       />
       <FilterGroup
         label="Status"
@@ -109,7 +112,7 @@ export default function FilterBar({ filters, sort, onChange, onSortChange, allCa
             value={sort.field}
             onChange={(e) => onSortChange({ ...sort, field: e.target.value })}
           >
-            {SORTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            {sortsFor(game.costLabel).map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
           <button
             className="sort-dir-btn"

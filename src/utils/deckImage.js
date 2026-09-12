@@ -1,4 +1,5 @@
-// Compose a deck (legend + chosen champion + main deck) onto a single canvas
+// Compose a deck (legend(s) + chosen champion + main deck, battlefields,
+// sideboard and optionally the bench) onto a single canvas
 // and download it as a PNG. Card images come from external CDNs; in the
 // packaged/Electron app, main.cjs injects CORS headers so the canvas stays
 // clean and can be exported.
@@ -95,25 +96,35 @@ function drawQty(ctx, qty, x, y, w) {
 
 /**
  * Build and download a PNG of the deck.
- * @param {{ deckName, legend, champion, mainRows }} deck
- *   mainRows: [{ card, qty }]
+ * @param {{ deckName, identity, legend, champion, mainRows, sections }} deck
+ *   identity: [[label, card], ...] — the deck's legend(s) / chosen champion
+ *   (legacy `legend` / `champion` fields are accepted too)
+ *   sections: [{ label, rows: [{ card, qty }] }] — card grids drawn in order
+ *   (Main Deck, Battlefields, Sideboard, Bench…); empty sections are skipped.
+ *   mainRows: legacy single-section form, equivalent to
+ *   sections = [{ label: 'Main Deck', rows: mainRows }]
  */
-export async function exportDeckImage({ deckName, legend, champion, mainRows }) {
+export async function exportDeckImage({ deckName, identity: identityIn, legend, champion, mainRows, sections: sectionsIn }) {
   const P = 28, GAP = 12, TITLE_H = 54, LABEL_H = 20;
   const IDW = 200, IDH = Math.round(IDW * 7 / 5);
   const MW = 152, MH = Math.round(MW * 7 / 5);
   const COLS = 8;
+  const SECTION_LABEL_H = 30;
+  const SECTION_GAP = GAP * 2;
 
-  const identity = [['Legend', legend], ['Champion', champion]].filter(([, c]) => c);
-  const cards = mainRows ?? [];
-  const rows = Math.ceil(cards.length / COLS);
+  const identity = (identityIn ?? [['Legend', legend], ['Champion', champion]]).filter(([, c]) => c);
+  const sections = (sectionsIn ?? [{ label: 'Main Deck', rows: mainRows ?? [] }])
+    .filter(sec => sec.rows?.length)
+    .map(sec => {
+      const rows = Math.ceil(sec.rows.length / COLS);
+      return { ...sec, gridRows: rows, h: SECTION_LABEL_H + rows * MH + (rows - 1) * GAP };
+    });
 
   const idBlockH = identity.length ? LABEL_H + IDH : 0;
-  const gridLabelH = cards.length ? 30 : 0;
-  const gridH = rows ? rows * MH + (rows - 1) * GAP : 0;
+  const sectionsH = sections.reduce((n, sec, i) => n + sec.h + (i > 0 ? SECTION_GAP : 0), 0);
 
   const W = COLS * MW + (COLS - 1) * GAP + 2 * P;
-  const H = P + TITLE_H + idBlockH + (idBlockH ? GAP * 2 : 0) + gridLabelH + gridH + P;
+  const H = P + TITLE_H + idBlockH + (idBlockH ? GAP * 2 : 0) + sectionsH + P;
 
   const scale = 2; // crisp on hi-dpi
   const canvas = document.createElement('canvas');
@@ -133,7 +144,8 @@ export async function exportDeckImage({ deckName, legend, champion, mainRows }) 
 
   // Preload images
   const idImgs = await Promise.all(identity.map(([, c]) => loadImage(c.media?.image_url)));
-  const cardImgs = await Promise.all(cards.map(({ card }) => loadImage(card.media?.image_url)));
+  const sectionImgs = await Promise.all(sections.map(sec =>
+    Promise.all(sec.rows.map(({ card }) => loadImage(card.media?.image_url)))));
 
   let y = P + TITLE_H;
 
@@ -150,22 +162,24 @@ export async function exportDeckImage({ deckName, legend, champion, mainRows }) 
     y += idBlockH + GAP * 2;
   }
 
-  // Main deck grid
-  if (cards.length) {
-    const total = cards.reduce((n, r) => n + r.qty, 0);
+  // Card grids, one per section
+  sections.forEach((sec, si) => {
+    if (si > 0) y += SECTION_GAP;
+    const total = sec.rows.reduce((n, r) => n + r.qty, 0);
     ctx.fillStyle = SUB;
     ctx.font = '600 16px Geist, sans-serif';
-    ctx.fillText(`Main Deck — ${total} cards`, P, y);
-    y += gridLabelH;
-    cards.forEach(({ card, qty }, i) => {
+    ctx.fillText(`${sec.label} — ${total} card${total !== 1 ? 's' : ''}`, P, y);
+    y += SECTION_LABEL_H;
+    sec.rows.forEach(({ card, qty }, i) => {
       const col = i % COLS;
       const row = Math.floor(i / COLS);
       const cx = P + col * (MW + GAP);
       const cy = y + row * (MH + GAP);
-      drawCard(ctx, cardImgs[i], card.name, cx, cy, MW, MH);
+      drawCard(ctx, sectionImgs[si][i], card.name, cx, cy, MW, MH);
       drawQty(ctx, qty, cx, cy, MW);
     });
-  }
+    y += sec.gridRows * MH + (sec.gridRows - 1) * GAP;
+  });
 
   await downloadCanvas(canvas, deckName || 'deck');
 }

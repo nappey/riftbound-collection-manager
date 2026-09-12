@@ -27,12 +27,22 @@
   --d-fury: oklch(0.62 0.20 25);    /* red */
   --d-mind: oklch(0.66 0.16 258);   /* blue */
   --d-order: oklch(0.82 0.15 95);   /* yellow */
+  /* Cyberpunk TCG colors */
+  --d-red: oklch(0.62 0.21 25);
+  --d-blue: oklch(0.66 0.16 250);
+  --d-green: oklch(0.72 0.16 150);
+  --d-yellow: oklch(0.86 0.17 95);
 
   --r-common: oklch(0.7 0.01 270);
   --r-uncommon: oklch(0.74 0.10 200);
   --r-rare: oklch(0.78 0.13 90);
   --r-epic: oklch(0.72 0.15 305);
   --r-showcase: oklch(0.78 0.14 340);
+  --r-nova-rare: oklch(0.8 0.15 60);
+  --r-secret: oklch(0.72 0.17 340);
+  --r-iconic-legend: oklch(0.84 0.16 95);
+  --r-iconic-other: oklch(0.76 0.12 200);
+  --r-iconic-secret: oklch(0.7 0.19 320);
 
   --radius-sm: 4px;
   --radius-md: 6px;

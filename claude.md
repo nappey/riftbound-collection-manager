@@ -1,1 +1,4 @@
 I want to create a collection manager for riftbound cards. I want all the cards to be pulled in and have a very simple ui. Where I can group by playsets(3) per set. and when I have just a playset it recognizes that but if I have more it shows that I have a playset plus how ever many extra.
+
+Multi-game: the app supports Riftbound and Cyberpunk TCG. All game-specific data (API adapter, sets, factions/colors, rarities, playset/foil rules, deck rules, CSV + decklist formats, card-text renderer) lives in `src/games/<game>.js` (+ a leaf `<game>Rules.js` for card-only rules). Pages read the active game via `useGame()`; card-only helpers in `src/utils/` dispatch on `card.game` (Riftbound cards have no `game` field). Per-game localStorage keys come from `src/games/storage.js` — never rename the `riftbound-*` keys.
+

@@ -16,106 +16,20 @@ import TradeBinder from './pages/TradeBinder';
 import Shopping from './pages/Shopping';
 import Stats from './pages/Stats';
 import TravelingMerchant from './pages/TravelingMerchant';
-import { fetchTcgProducts, augmentCards } from './utils/tcgAugment';
-import { augmentRunes } from './utils/runeArt';
-import { dedupeCards } from './utils/dedupeCards';
-import { SET_LOGOS } from './utils/setLogos';
+import { GAMES, GAME_IDS, DEFAULT_GAME, getGame } from './games';
+import { GameContext } from './games/GameContext';
+import { storageKeys, ACTIVE_GAME_KEY } from './games/storage';
+import { getCached, setCached } from './games/cardCache';
 import './App.css';
 import './pages.css';
 
-const API_BASE = 'https://api.riftcodex.com';
-const PAGE_SIZE = 100;
-const STORAGE_KEY      = 'riftbound-collection';
-const FOIL_STORAGE_KEY = 'riftbound-collection-foil';
-const LF_KEY           = 'riftbound-looking-for';
-const UFT_KEY          = 'riftbound-up-for-trade';
-const DECKS_KEY        = 'riftbound-decks';
-const MERCHANT_KEY     = 'riftbound-merchant';
-const VENDOR_KEY       = 'riftbound-merchant-vendor';
 const IS_ELECTRON = typeof window !== 'undefined' && window.__electron__?.isElectron;
-const TCGCSV_BASE = IS_ELECTRON
-  ? 'https://tcgcsv.com/tcgplayer/89'
-  : '/tcgcsv/tcgplayer/89';
-// Fallback TCGplayer group IDs (Riftbound = category 89) used only if runtime
-// group discovery fails — normally the full set list is fetched from tcgcsv so
-// new sets get prices automatically.
-const FALLBACK_GROUP_IDS = [24344, 24439, 24502, 24519, 24528, 24552, 24560, 24343];
-
-const RARITY_ORDER = { common: 0, uncommon: 1, rare: 2, showcase: 3 };
-
-const SET_LABELS = {
-  OGN: 'Origins',
-  OGS: 'Proving Grounds',
-  OPP: 'Organized Play Promos',
-  SFD: 'Spiritforged',
-  UNL: 'Unleashed',
-  PR:  'Promotional Cards',
-  JDG: 'Judge Promos',
-  RWB: 'Worlds Bundle 2025',
-};
-
-const PROMO_SETS = new Set(['OGS', 'OPP', 'PR', 'JDG', 'RWB']);
-const PROMO_FOLD_SETS = new Set(['OPP', 'PR', 'JDG', 'RWB']);
-const PROMO_SHORT_LABELS = {
-  OPP: 'OP Promo', PR: 'Promo', JDG: 'Judge', RWB: 'Worlds',
-};
-
-async function fetchAllCards() {
-  // no-store so new sets/cards always appear on launch instead of being served
-  // a stale cached response from disk.
-  const first = await fetch(`${API_BASE}/cards?size=${PAGE_SIZE}&page=1`, { cache: 'no-store' }).then((r) => {
-    if (!r.ok) throw new Error(`API error: ${r.status}`);
-    return r.json();
-  });
-  const remaining = [];
-  for (let p = 2; p <= first.pages; p++) {
-    remaining.push(fetch(`${API_BASE}/cards?size=${PAGE_SIZE}&page=${p}`, { cache: 'no-store' }).then((r) => r.json()));
-  }
-  const rest = await Promise.all(remaining);
-  return [first, ...rest].flatMap((d) => d.items);
-}
-
-// Discover every Riftbound set's TCGplayer group ID at runtime so a brand-new
-// set gets prices with no code change. Falls back to the known list if the
-// groups endpoint is unavailable.
-async function fetchGroupIds() {
-  try {
-    const res = await fetch(`${TCGCSV_BASE}/groups`, { cache: 'no-store' }).then((r) => {
-      if (!r.ok) throw new Error(`groups ${r.status}`);
-      return r.json();
-    });
-    const ids = (res.results ?? []).map((g) => g.groupId).filter((id) => id != null);
-    if (ids.length) return ids;
-  } catch (e) {
-    console.warn('[prices] group discovery failed, using fallback list:', e?.message ?? e);
-  }
-  return FALLBACK_GROUP_IDS;
-}
-
-async function fetchAllPrices() {
-  const groupIds = await fetchGroupIds();
-  const responses = await Promise.allSettled(
-    groupIds.map((gid) =>
-      fetch(`${TCGCSV_BASE}/${gid}/prices`).then((r) => r.json())
-    )
-  );
-  const priceMap = {};
-  for (const res of responses) {
-    if (res.status !== 'fulfilled') continue;
-    for (const price of res.value.results ?? []) {
-      if (price.marketPrice == null) continue;
-      const id = String(price.productId);
-      if (!priceMap[id]) priceMap[id] = { normal: null, foil: null };
-      const entry = { market: price.marketPrice, low: price.lowPrice };
-      if (price.subTypeName === 'Foil') {
-        priceMap[id].foil = entry;
-      } else {
-        priceMap[id].normal = entry;
-      }
-    }
-  }
-  return priceMap;
-}
+// tcgcsv (prices) and Netdeck (Cyberpunk cards) are hit directly in Electron,
+// which injects CORS headers; the browser dev build goes through Vite proxies.
+const tcgcsvBaseFor = (category) => IS_ELECTRON
+  ? `https://tcgcsv.com/tcgplayer/${category}`
+  : `/tcgcsv/tcgplayer/${category}`;
+const NETDECK_BASE = IS_ELECTRON ? 'https://api.netdeck.gg/api/cards' : '/netdeck/api/cards';
 
 function applyFilters(cards, filters, collection) {
   const search = filters.search.toLowerCase().trim();
@@ -139,7 +53,7 @@ function applyFilters(cards, filters, collection) {
   });
 }
 
-function applySort(cards, sort, collection) {
+function applySort(cards, sort, collection, rarityOrder) {
   return [...cards].sort((a, b) => {
     let cmp;
     switch (sort.field) {
@@ -147,8 +61,8 @@ function applySort(cards, sort, collection) {
         cmp = a.name.localeCompare(b.name);
         break;
       case 'rarity':
-        cmp = (RARITY_ORDER[a.classification?.rarity?.toLowerCase()] ?? 0) -
-              (RARITY_ORDER[b.classification?.rarity?.toLowerCase()] ?? 0);
+        cmp = (rarityOrder[a.classification?.rarity?.toLowerCase()] ?? 0) -
+              (rarityOrder[b.classification?.rarity?.toLowerCase()] ?? 0);
         break;
       case 'energy':
         cmp = (a.attributes?.energy ?? 99) - (b.attributes?.energy ?? 99);
@@ -163,19 +77,26 @@ function applySort(cards, sort, collection) {
   });
 }
 
-function groupBySet(cards) {
-  return cards.reduce((acc, card) => {
+function groupBySet(cards, game) {
+  const grouped = cards.reduce((acc, card) => {
     const setId = card.set?.set_id ?? 'UNKNOWN';
     if (!acc[setId]) {
       acc[setId] = {
-        label: SET_LABELS[setId] ?? card.set?.label ?? setId,
-        promo: PROMO_SETS.has(setId),
+        label: game.setLabels[setId] ?? card.set?.label ?? setId,
+        promo: game.promoSets.has(setId),
         cards: [],
       };
     }
     acc[setId].cards.push(card);
     return acc;
   }, {});
+  // Present sets in the game's canonical order, unknown sets after.
+  const order = game.setOrder;
+  const ids = Object.keys(grouped).sort((a, b) => {
+    const ia = order.indexOf(a), ib = order.indexOf(b);
+    return (ia === -1 ? order.length : ia) - (ib === -1 ? order.length : ib);
+  });
+  return Object.fromEntries(ids.map(id => [id, grouped[id]]));
 }
 
 // Pick a representative card to act as a set's "cover" art — prefer a Legend,
@@ -229,13 +150,13 @@ function ListRow({ card, count, foilCount, price, pricesLoading, onAdjust, onAdj
 
   return (
     <div className={`list-row s-${status}`}>
-      <span className="list-num">#{card.collector_number}</span>
+      <span className="list-num">#{card.collector_label ?? card.collector_number}</span>
       <div className="list-thumb">
         {imgSrc ? <img src={imgSrc} alt={card.name} loading="lazy" /> : null}
       </div>
       <div className="list-name">
         {card.name}
-        <span className="list-id">{card.id?.toUpperCase()}</span>
+        <span className="list-id">{card.code ?? card.id?.toUpperCase()}</span>
       </div>
       <div className="list-meta">
         <span>{card.classification?.type}</span>
@@ -258,36 +179,59 @@ function ListRow({ card, count, foilCount, price, pricesLoading, onAdjust, onAdj
   );
 }
 
+// Shell: picks the active game and remounts the whole UI when it changes, so
+// every piece of per-game state (collection, decks, filters, tab...) re-reads
+// from the right localStorage namespace with no swapping code.
 export default function App() {
-  const [allCards, setAllCards] = useState([]);
-  const [prices, setPrices] = useState({});
-  const [pricesLoading, setPricesLoading] = useState(true);
+  const [gameId, setGameId] = useState(() => {
+    try { const id = localStorage.getItem(ACTIVE_GAME_KEY); return GAMES[id] ? id : DEFAULT_GAME; }
+    catch { return DEFAULT_GAME; }
+  });
+  useEffect(() => { try { localStorage.setItem(ACTIVE_GAME_KEY, gameId); } catch { /* ignore */ } }, [gameId]);
+  const game = getGame(gameId);
+  return (
+    <GameContext.Provider value={game}>
+      <GameApp key={game.id} game={game} onSwitchGame={setGameId} />
+    </GameContext.Provider>
+  );
+}
+
+function GameApp({ game, onSwitchGame }) {
+  const K = storageKeys(game.id);
+  const TCGCSV_BASE = tcgcsvBaseFor(game.prices.tcgcsvCategory);
+  // Cards/prices already loaded this session (switching back to a game) seed
+  // state directly so the UI is instant and no refetch runs.
+  const cached = getCached(game.id);
+  const [allCards, setAllCards] = useState(() => cached?.cards ?? []);
+  const [progress, setProgress] = useState(null); // { done, total } while cards load
+  const [prices, setPrices] = useState(() => cached?.prices ?? {});
+  const [pricesLoading, setPricesLoading] = useState(() => !cached?.prices);
   const [collection, setCollection] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; }
+    try { return JSON.parse(localStorage.getItem(K.collection)) || {}; }
     catch { return {}; }
   });
   const [foilCollection, setFoilCollection] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(FOIL_STORAGE_KEY)) || {}; }
+    try { return JSON.parse(localStorage.getItem(K.foil)) || {}; }
     catch { return {}; }
   });
   const [lookingFor, setLookingFor] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(LF_KEY)) || {}; }
+    try { return JSON.parse(localStorage.getItem(K.lf)) || {}; }
     catch { return {}; }
   });
   const [upForTrade, setUpForTrade] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(UFT_KEY)) || {}; }
+    try { return JSON.parse(localStorage.getItem(K.uft)) || {}; }
     catch { return {}; }
   });
   const [decks, setDecks] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(DECKS_KEY)) || []; }
+    try { return JSON.parse(localStorage.getItem(K.decks)) || []; }
     catch { return []; }
   });
   const [merchant, setMerchant] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(MERCHANT_KEY)) || []; }
+    try { return JSON.parse(localStorage.getItem(K.merchant)) || []; }
     catch { return []; }
   });
   const [vendorName, setVendorName] = useState(() => {
-    try { return localStorage.getItem(VENDOR_KEY) || ''; }
+    try { return localStorage.getItem(K.vendor) || ''; }
     catch { return ''; }
   });
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
@@ -304,40 +248,55 @@ export default function App() {
   const consumeNewDeckLegend = useCallback(() => setNewDeckLegend(null), []);
   const [activeSetId, setActiveSetId] = useState(null);
   const [view, setView] = useState('grid');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !cached?.cards);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    fetchAllCards()
-      .then(async (cards) => {
-        // The API re-ingests some sets (currently Vendetta), serving each card
-        // several times under different ids. Drop the ghosts before anything
-        // downstream counts or groups them.
-        cards = dedupeCards(cards);
-        try {
-          // Swap in the correct Arcane (PR) promo art (riftcodex serves the
-          // base art for those).
-          const tcg = await fetchTcgProducts(TCGCSV_BASE);
-          cards = augmentCards(cards, tcg);
-        } catch { /* tcgcsv unavailable — fall back to riftcodex data as-is */ }
-        // Curated rune art + missing rune printings (local images).
-        cards = augmentRunes(cards);
-        setAllCards(cards);
-        setLoading(false);
-      })
-      .catch((err) => { setError(err.message); setLoading(false); });
-    fetchAllPrices()
-      .then((map) => { setPrices(map); setPricesLoading(false); })
-      .catch(() => setPricesLoading(false));
-  }, []);
+    const have = getCached(game.id);
+    if (!have?.cards) {
+      game.api.loadCards({ isElectron: IS_ELECTRON, tcgcsvBase: TCGCSV_BASE, netdeckBase: NETDECK_BASE },
+        (done, total) => setProgress({ done, total }))
+        .then((cards) => {
+          setCached(game.id, { cards });
+          setAllCards(cards);
+          setLoading(false);
+        })
+        .catch((err) => { setError(err.message); setLoading(false); });
+    }
+    if (!have?.prices) {
+      game.prices.load(TCGCSV_BASE)
+        .then((map) => { setCached(game.id, { prices: map }); setPrices(map); setPricesLoading(false); })
+        .catch(() => setPricesLoading(false));
+    }
+  }, [game, TCGCSV_BASE]);
 
-  useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(collection)); }, [collection]);
-  useEffect(() => { localStorage.setItem(FOIL_STORAGE_KEY, JSON.stringify(foilCollection)); }, [foilCollection]);
-  useEffect(() => { localStorage.setItem(LF_KEY, JSON.stringify(lookingFor)); }, [lookingFor]);
-  useEffect(() => { localStorage.setItem(UFT_KEY, JSON.stringify(upForTrade)); }, [upForTrade]);
-  useEffect(() => { localStorage.setItem(DECKS_KEY, JSON.stringify(decks)); }, [decks]);
-  useEffect(() => { localStorage.setItem(MERCHANT_KEY, JSON.stringify(merchant)); }, [merchant]);
-  useEffect(() => { localStorage.setItem(VENDOR_KEY, vendorName); }, [vendorName]);
+  // Netdeck serves signed image URLs that expire after a few hours. When the
+  // window comes back into focus after a long idle, silently refetch the card
+  // list so images keep loading; ids are stable so no other state changes.
+  useEffect(() => {
+    if (!game.api.imagesExpire) return;
+    const MAX_AGE = 6 * 60 * 60 * 1000;
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      const c = getCached(game.id);
+      if (!c?.loadedAt || Date.now() - c.loadedAt < MAX_AGE) return;
+      setCached(game.id, {}); // bump loadedAt so a slow reload isn't retriggered
+      game.api.loadCards({ isElectron: IS_ELECTRON, tcgcsvBase: TCGCSV_BASE, netdeckBase: NETDECK_BASE })
+        .then((cards) => { setCached(game.id, { cards }); setAllCards(cards); })
+        .catch(() => { /* keep the current cards; the <img> fallback covers expired art */ });
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [game, TCGCSV_BASE]);
+
+  // K is fixed for the lifetime of a GameApp mount (the shell remounts on switch).
+  useEffect(() => { localStorage.setItem(K.collection, JSON.stringify(collection)); }, [K.collection, collection]);
+  useEffect(() => { localStorage.setItem(K.foil, JSON.stringify(foilCollection)); }, [K.foil, foilCollection]);
+  useEffect(() => { localStorage.setItem(K.lf, JSON.stringify(lookingFor)); }, [K.lf, lookingFor]);
+  useEffect(() => { localStorage.setItem(K.uft, JSON.stringify(upForTrade)); }, [K.uft, upForTrade]);
+  useEffect(() => { localStorage.setItem(K.decks, JSON.stringify(decks)); }, [K.decks, decks]);
+  useEffect(() => { localStorage.setItem(K.merchant, JSON.stringify(merchant)); }, [K.merchant, merchant]);
+  useEffect(() => { localStorage.setItem(K.vendor, vendorName); }, [K.vendor, vendorName]);
 
   function adjust(cardId, delta) {
     setCollection((prev) => {
@@ -384,33 +343,33 @@ export default function App() {
   );
 
   const allPromoCards = useMemo(
-    () => allCards.filter(c => PROMO_FOLD_SETS.has(c.set?.set_id) && c.classification?.type !== 'Rune'),
-    [allCards]
+    () => allCards.filter(c => game.promoFoldSets.has(c.set?.set_id) && c.classification?.type !== 'Rune'),
+    [allCards, game]
   );
 
   const promoByName = useMemo(() => {
     const map = {};
     for (const card of allCards) {
-      if (PROMO_FOLD_SETS.has(card.set?.set_id) && card.classification?.type !== 'Rune') {
+      if (game.promoFoldSets.has(card.set?.set_id) && card.classification?.type !== 'Rune') {
         const key = card.name.toLowerCase().trim();
         (map[key] = map[key] || []).push(card);
       }
     }
     return map;
-  }, [allCards]);
+  }, [allCards, game]);
 
   const cardsBySet = useMemo(() => {
     const filtered = applyFilters(allCards, filters, collection)
       .filter(c => c.classification?.type !== 'Rune')
-      .filter(c => !PROMO_FOLD_SETS.has(c.set?.set_id));
-    const sorted = applySort(filtered, sort, collection);
-    return groupBySet(sorted);
-  }, [allCards, filters, sort, collection]);
+      .filter(c => !game.promoFoldSets.has(c.set?.set_id));
+    const sorted = applySort(filtered, sort, collection, game.rarityOrder);
+    return groupBySet(sorted, game);
+  }, [allCards, filters, sort, collection, game]);
 
   // Stats for all non-promo, non-rune cards
   const globalStats = useMemo(() => {
     const nonFolded = allCards.filter(c =>
-      c.classification?.type !== 'Rune' && !PROMO_FOLD_SETS.has(c.set?.set_id)
+      c.classification?.type !== 'Rune' && !game.promoFoldSets.has(c.set?.set_id)
     );
     const ownedCount = nonFolded.filter(c => (collection[c.id] ?? 0) > 0).length;
     const playsetCount = nonFolded.filter(c => (collection[c.id] ?? 0) >= 3).length;
@@ -421,17 +380,17 @@ export default function App() {
       pct: nonFolded.length ? Math.round((playsetCount / nonFolded.length) * 100) : 0,
       value: totalValue,
     };
-  }, [allCards, collection, foilCollection, prices, pricesLoading]);
+  }, [allCards, collection, foilCollection, prices, pricesLoading, game]);
 
   // Per-set stats for tabs
   const setTabStats = useMemo(() => {
     const m = {};
     const allNonFolded = allCards.filter(c =>
-      c.classification?.type !== 'Rune' && !PROMO_FOLD_SETS.has(c.set?.set_id)
+      c.classification?.type !== 'Rune' && !game.promoFoldSets.has(c.set?.set_id)
     );
     const allRunes = allCards.filter(c => c.classification?.type === 'Rune');
     // Group all non-rune cards by set
-    const grouped = groupBySet(allNonFolded);
+    const grouped = groupBySet(allNonFolded, game);
     for (const [sid, { cards }] of Object.entries(grouped)) {
       const owned = cards.filter(c => (collection[c.id] ?? 0) + (foilCollection[c.id] ?? 0) > 0).length;
       m[sid] = { total: cards.length, owned, pct: cards.length ? Math.round(owned / cards.length * 100) : 0 };
@@ -440,15 +399,15 @@ export default function App() {
     const runesOwned = allRunes.filter(c => (collection[c.id] ?? 0) + (foilCollection[c.id] ?? 0) > 0).length;
     m['runes'] = { total: allRunes.length, owned: runesOwned, pct: allRunes.length ? Math.round(runesOwned / allRunes.length * 100) : 0 };
     // Promos
-    const allPromos = allCards.filter(c => PROMO_FOLD_SETS.has(c.set?.set_id) && c.classification?.type !== 'Rune');
+    const allPromos = allCards.filter(c => game.promoFoldSets.has(c.set?.set_id) && c.classification?.type !== 'Rune');
     const promosOwned = allPromos.filter(c => (collection[c.id] ?? 0) + (foilCollection[c.id] ?? 0) > 0).length;
     m['promos'] = { total: allPromos.length, owned: promosOwned, pct: allPromos.length ? Math.round(promosOwned / allPromos.length * 100) : 0 };
     return m;
-  }, [allCards, collection, foilCollection]);
+  }, [allCards, collection, foilCollection, game]);
 
   if (loading) return (
     <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--text-3)', fontFamily: 'var(--font-mono)'}}>
-      Loading cards…
+      Loading {game.label} cards…{progress && progress.total ? ` (${progress.done}/${progress.total})` : ''}
     </div>
   );
   if (error) return (
@@ -472,8 +431,8 @@ export default function App() {
       kind: cardsBySet[sid].promo ? 'promoSet' : 'set',
       ...statOf(sid),
     })),
-    { id: 'runes', label: 'Rune Box', kind: 'runes', ...statOf('runes') },
-    { id: 'promos', label: 'Promos', kind: 'promos', ...statOf('promos') },
+    ...(game.features.runeBox ? [{ id: 'runes', label: 'Rune Box', kind: 'runes', ...statOf('runes') }] : []),
+    ...(game.features.promoBox ? [{ id: 'promos', label: 'Promos', kind: 'promos', ...statOf('promos') }] : []),
   ];
 
   // Active filter chips
@@ -489,7 +448,7 @@ export default function App() {
     const allSetCards = allCards.filter(c =>
       c.set?.set_id === currentSetId &&
       c.classification?.type !== 'Rune' &&
-      !PROMO_FOLD_SETS.has(c.set?.set_id)
+      !game.promoFoldSets.has(c.set?.set_id)
     );
     const playsets = allSetCards.filter(c => (collection[c.id] ?? 0) + (foilCollection[c.id] ?? 0) >= 3).length;
     const partial  = allSetCards.filter(c => {
@@ -504,7 +463,7 @@ export default function App() {
     }, 0) : null;
     setProgressStats = {
       name: cardsBySet[currentSetId]?.label ?? currentSetId,
-      logo: SET_LOGOS[currentSetId] ?? null,
+      logo: game.features.setLogos[currentSetId] ?? null,
       art: pickSetArt(allSetCards),
       playsets, partial, missing,
       total: allSetCards.length,
@@ -521,7 +480,18 @@ export default function App() {
         <div className="brand">
           <div className="brand-mark"></div>
           <div className="brand-name">
-            Card Manager <span className="muted">/ Riftbound</span>
+            Card Manager <span className="muted">/ {game.label}</span>
+          </div>
+          <div className="seg game-switch" title="Switch game">
+            {GAME_IDS.map(id => (
+              <button
+                key={id}
+                className={id === game.id ? 'active' : ''}
+                onClick={() => id !== game.id && onSwitchGame(id)}
+              >
+                {GAMES[id].label}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -584,7 +554,7 @@ export default function App() {
             sort={sort}
             onChange={setFilters}
             onSortChange={setSort}
-            allCards={allCards.filter(c => c.classification?.type !== 'Rune' && !PROMO_FOLD_SETS.has(c.set?.set_id))}
+            allCards={allCards.filter(c => c.classification?.type !== 'Rune' && !game.promoFoldSets.has(c.set?.set_id))}
           />
         )}
 
@@ -598,7 +568,7 @@ export default function App() {
               onAdjust={adjust}
               onAdjustFoil={adjustFoil}
               promoByName={promoByName}
-              promoShortLabels={PROMO_SHORT_LABELS}
+              promoShortLabels={game.promoShortLabels}
             />
           ) : tab === 'decks' ? (
             <Decks
@@ -777,7 +747,7 @@ export default function App() {
                       <span>#</span>
                       <span></span>
                       <span>Name</span>
-                      <span>Type · Domain</span>
+                      <span>Type · {game.faction.label}</span>
                       <span>Price</span>
                       <span>Qty</span>
                     </div>
@@ -812,7 +782,7 @@ export default function App() {
                     onToggleLF={toggleLF}
                     onToggleUFT={toggleUFT}
                     promoByName={promoByName}
-                    promoShortLabels={PROMO_SHORT_LABELS}
+                    promoShortLabels={game.promoShortLabels}
                   />
                 )
               ) : (

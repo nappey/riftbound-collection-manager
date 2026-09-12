@@ -1,5 +1,5 @@
 import { useMemo, useState, useCallback } from 'react';
-import { SET_LABELS } from '../utils/generateExport';
+import { useGame } from '../games/GameContext';
 import { isAlwaysFoil } from '../utils/playset';
 import { fmt$ } from '../utils/analysis';
 import { exportMerchantImage } from '../utils/deckImage';
@@ -17,6 +17,7 @@ function marketOf(card, foil, prices) {
 function MerchantRow({
   entry, card, market, effPrice, onReturn, onSell, onUnsell, onSetAsk, onRemove, onOpenModal, pricesLoading,
 }) {
+  const { setLabels: SET_LABELS } = useGame();
   const [askDraft, setAskDraft] = useState(entry.askPrice != null ? String(entry.askPrice) : '');
   const [saleDraft, setSaleDraft] = useState('');
   const soldCount = entry.sold.length;
@@ -102,6 +103,7 @@ export default function TravelingMerchant({
   merchant, setMerchant, vendorName, setVendorName,
   onAdjust, onAdjustFoil, onOpenModal,
 }) {
+  const { setLabels: SET_LABELS } = useGame();
   const [query, setQuery] = useState('');
   const [imgBusy, setImgBusy] = useState(false);
   const [copied, setCopied] = useState(false);
