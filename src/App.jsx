@@ -20,6 +20,7 @@ import { GAMES, GAME_IDS, DEFAULT_GAME, getGame } from './games';
 import { GameContext } from './games/GameContext';
 import { storageKeys, ACTIVE_GAME_KEY } from './games/storage';
 import { getCached, setCached } from './games/cardCache';
+import MerchantBtn from './components/MerchantBtn';
 import './App.css';
 import './pages.css';
 
@@ -141,7 +142,7 @@ const RowsIcon = () => (
   </svg>
 );
 
-function ListRow({ card, count, foilCount, price, pricesLoading, onAdjust, onAdjustFoil }) {
+function ListRow({ card, count, foilCount, price, pricesLoading, onAdjust, onAdjustFoil, onConsign }) {
   const imgSrc = card.media?.image_url ?? null;
   const domain = (card.classification?.domain?.[0] ?? '').toLowerCase();
   const normalPrice = price?.normal?.market;
@@ -174,6 +175,7 @@ function ListRow({ card, count, foilCount, price, pricesLoading, onAdjust, onAdj
           <span className="val">{foilCount}</span>
           <button onClick={() => onAdjustFoil(card.id, 1)}>+</button>
         </div>
+        <MerchantBtn count={count} foilCount={foilCount} onConsign={(foil) => onConsign?.(card.id, foil)} />
       </div>
     </div>
   );
@@ -331,6 +333,22 @@ function GameApp({ game, onSwitchGame }) {
       return next;
     });
   }
+
+  // Hand one copy (normal or foil) to the Traveling Merchant: it leaves the
+  // collection count and joins (or bumps) the matching consignment entry.
+  const consign = useCallback((cardId, foil) => {
+    (foil ? adjustFoil : adjust)(cardId, -1);
+    setMerchant(prev => {
+      const i = prev.findIndex(e => e.cardId === cardId && e.foil === foil);
+      if (i >= 0) {
+        const next = [...prev];
+        next[i] = { ...next[i], qty: next[i].qty + 1 };
+        return next;
+      }
+      const id = `m-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+      return [...prev, { id, cardId, foil, qty: 1, askPrice: null, ts: Date.now(), sold: [] }];
+    });
+  }, []);
 
   function handleImport({ updates, foilUpdates }) {
     setCollection((prev) => ({ ...prev, ...updates }));
@@ -620,6 +638,7 @@ function GameApp({ game, onSwitchGame }) {
               setVendorName={setVendorName}
               onAdjust={adjust}
               onAdjustFoil={adjustFoil}
+              onConsign={consign}
               onOpenModal={setModalCard}
             />
           ) : tab === 'stats' ? (
@@ -724,6 +743,7 @@ function GameApp({ game, onSwitchGame }) {
                   upForTrade={upForTrade}
                   onToggleLF={toggleLF}
                   onToggleUFT={toggleUFT}
+                  onConsign={consign}
                 />
               ) : currentSetId === 'promos' ? (
                 <PromoBox
@@ -739,6 +759,7 @@ function GameApp({ game, onSwitchGame }) {
                   upForTrade={upForTrade}
                   onToggleLF={toggleLF}
                   onToggleUFT={toggleUFT}
+                  onConsign={consign}
                 />
               ) : currentSetId ? (
                 view === 'list' ? (
@@ -761,6 +782,7 @@ function GameApp({ game, onSwitchGame }) {
                         pricesLoading={pricesLoading}
                         onAdjust={adjust}
                         onAdjustFoil={adjustFoil}
+                        onConsign={consign}
                       />
                     ))}
                   </div>
@@ -781,6 +803,7 @@ function GameApp({ game, onSwitchGame }) {
                     upForTrade={upForTrade}
                     onToggleLF={toggleLF}
                     onToggleUFT={toggleUFT}
+                    onConsign={consign}
                     promoByName={promoByName}
                     promoShortLabels={game.promoShortLabels}
                   />

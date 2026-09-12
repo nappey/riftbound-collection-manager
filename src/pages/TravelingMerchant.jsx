@@ -1,6 +1,7 @@
 import { useMemo, useState, useCallback } from 'react';
 import { useGame } from '../games/GameContext';
 import { isAlwaysFoil } from '../utils/playset';
+import { printingLabel } from '../utils/printings';
 import { fmt$ } from '../utils/analysis';
 import { exportMerchantImage } from '../utils/deckImage';
 
@@ -101,7 +102,7 @@ function MerchantRow({
 export default function TravelingMerchant({
   allCards, collection, foilCollection, prices, pricesLoading,
   merchant, setMerchant, vendorName, setVendorName,
-  onAdjust, onAdjustFoil, onOpenModal,
+  onAdjust, onAdjustFoil, onConsign, onOpenModal,
 }) {
   const { setLabels: SET_LABELS } = useGame();
   const [query, setQuery] = useState('');
@@ -115,29 +116,23 @@ export default function TravelingMerchant({
   }, [allCards]);
 
   // Search over cards you still own copies of (collection reflects what's left
-  // after consigning), so you can only put out what you actually have.
+  // after consigning), so you can only put out what you actually have. Every
+  // printing (alt art, overnumbered, promo…) is its own row, so the list is
+  // capped generously and labelled by printing.
   const results = useMemo(() => {
     const q = query.toLowerCase().trim();
     if (!q) return [];
     return allCards
-      .filter(c => c.name.toLowerCase().includes(q))
+      .filter(c => c.name.toLowerCase().includes(q)
+        || (c.code ?? '').toLowerCase().includes(q)
+        || printingLabel(c).toLowerCase().includes(q))
       .filter(c => (collection[c.id] ?? 0) > 0 || (foilCollection[c.id] ?? 0) > 0)
-      .slice(0, 8);
+      .slice(0, 30);
   }, [query, allCards, collection, foilCollection]);
 
   // ── mutations (also move copies in/out of the collection) ──────
-  const consign = useCallback((cardId, foil) => {
-    (foil ? onAdjustFoil : onAdjust)(cardId, -1);
-    setMerchant(prev => {
-      const i = prev.findIndex(e => e.cardId === cardId && e.foil === foil);
-      if (i >= 0) {
-        const next = [...prev];
-        next[i] = { ...next[i], qty: next[i].qty + 1 };
-        return next;
-      }
-      return [...prev, { id: mid(), cardId, foil, qty: 1, askPrice: null, ts: Date.now(), sold: [] }];
-    });
-  }, [onAdjust, onAdjustFoil, setMerchant]);
+  // Consigning is shared with the collection tiles' Merchant button (App.jsx).
+  const consign = onConsign;
 
   const returnCopy = useCallback((entry) => {
     if (entry.qty <= 0) return;
@@ -262,7 +257,7 @@ export default function TravelingMerchant({
                       {c.media?.image_url ? <img src={c.media.image_url} alt="" loading="lazy" /> : null}
                     </div>
                     <span className="tm-result-name">{c.name}</span>
-                    <span className="tm-result-set">{SET_LABELS[c.set?.set_id] ?? c.set?.set_id}</span>
+                    <span className="tm-result-set">{SET_LABELS[c.set?.set_id] ?? c.set?.set_id}{printingLabel(c) !== 'Standard' ? ` · ${printingLabel(c)}` : ''}</span>
                     <div className="tm-result-actions">
                       {!alwaysFoil && normal > 0 && (
                         <button className="btn sm" onClick={() => consign(c.id, false)}>+ Add ({normal})</button>

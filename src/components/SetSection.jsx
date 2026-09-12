@@ -1,7 +1,7 @@
 import { groupWithAlts } from '../utils/cardGroups';
 import CardItem from './CardItem';
 
-export function CardGrid({ groups, collection, foilCollection, prices, pricesLoading, onAdjust, onAdjustFoil, onOpenModal, lookingFor = {}, upForTrade = {}, onToggleLF, onToggleUFT, promoByName = {}, promoShortLabels = {} }) {
+export function CardGrid({ groups, collection, foilCollection, prices, pricesLoading, onAdjust, onAdjustFoil, onOpenModal, lookingFor = {}, upForTrade = {}, onToggleLF, onToggleUFT, onConsign, promoByName = {}, promoShortLabels = {} }) {
   // Flatten groups: each base card + each alt becomes its own cell
   const cells = [];
   for (const { base, alts } of groups) {
@@ -37,13 +37,14 @@ export function CardGrid({ groups, collection, foilCollection, prices, pricesLoa
           upForTrade={upForTrade}
           onToggleLF={onToggleLF}
           onToggleUFT={onToggleUFT}
+          onConsign={onConsign}
         />
       ))}
     </div>
   );
 }
 
-export default function SetSection({ promo, cards, collection, foilCollection, prices, pricesLoading, onAdjust, onAdjustFoil, onOpenModal, lookingFor, upForTrade, onToggleLF, onToggleUFT, promoByName, promoShortLabels }) {
+export default function SetSection({ promo, cards, collection, foilCollection, prices, pricesLoading, onAdjust, onAdjustFoil, onOpenModal, lookingFor, upForTrade, onToggleLF, onToggleUFT, onConsign, promoByName, promoShortLabels }) {
   const nonRunes = cards.filter((c) => c.classification?.type !== 'Rune');
   const cardGroups = groupWithAlts(nonRunes);
 
@@ -63,6 +64,7 @@ export default function SetSection({ promo, cards, collection, foilCollection, p
           upForTrade={upForTrade}
           onToggleLF={onToggleLF}
           onToggleUFT={onToggleUFT}
+          onConsign={onConsign}
           promoByName={promoByName}
           promoShortLabels={promoShortLabels}
         />

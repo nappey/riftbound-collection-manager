@@ -1,4 +1,5 @@
 import { isAlwaysFoil, isSingleton, isBattlefield, playsetTarget } from '../utils/playset';
+import MerchantBtn from './MerchantBtn';
 
 const Plus = () => (
   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -42,7 +43,7 @@ function TagBtn({ label, active, variant, onClick }) {
 export default function CardItem({
   card, count, foilCount, price, promos = [], isAlt = false, printingLabel = null,
   pricesLoading, onAdjust, onAdjustFoil, onOpenModal,
-  lookingFor = {}, upForTrade = {}, onToggleLF, onToggleUFT
+  lookingFor = {}, upForTrade = {}, onToggleLF, onToggleUFT, onConsign
 }) {
   const alwaysFoil = isAlwaysFoil(card);
   const singleton = isSingleton(card);
@@ -183,6 +184,7 @@ export default function CardItem({
         <div className="card-trade-row">
           <TagBtn label="LF" active={isLF} variant="lf" onClick={() => onToggleLF?.(card.id)} />
           <TagBtn label="UFT" active={isUFT} variant="uft" onClick={() => onToggleUFT?.(card.id)} />
+          {onConsign && <MerchantBtn count={count} foilCount={foilCount} onConsign={(foil) => onConsign(card.id, foil)} />}
         </div>
 
         {/* Promo fold-ins (only for base cards, not alts) */}
@@ -199,6 +201,7 @@ export default function CardItem({
               <div className="card-actions-trail">
                 <TagBtn label="LF" active={!!lookingFor[promo.id]} variant="lf" onClick={() => onToggleLF?.(promo.id)} />
                 <TagBtn label="UFT" active={!!upForTrade[promo.id]} variant="uft" onClick={() => onToggleUFT?.(promo.id)} />
+                {onConsign && <MerchantBtn compact count={pc} foilCount={pfc ?? 0} onConsign={(foil) => onConsign(promo.id, foil)} />}
               </div>
             </div>
           );

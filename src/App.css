@@ -1901,3 +1901,15 @@
   white-space: nowrap;
 }
 .cp-reminder { color: var(--text-3); }
+
+/* Send-to-Merchant button (sits with LF / UFT) */
+.tag-btn.merchant { display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+.tag-btn.merchant:not(:disabled):hover {
+  background: oklch(0.74 0.14 155 / 0.16);
+  border-color: oklch(0.74 0.14 155 / 0.45);
+  color: var(--ok);
+}
+.tag-btn.merchant:disabled { opacity: 0.35; cursor: not-allowed; }
+.tag-btn.merchant.compact { padding: 0 6px; }
+.card-trade-row .tag-btn.merchant { flex: 0 0 auto; padding: 0 9px; }
+.list-row .tag-btn.merchant { height: 24px; }

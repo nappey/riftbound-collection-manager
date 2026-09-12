@@ -41,7 +41,7 @@ function groupRunes(cards) {
 
 export default function RuneBox({
   allRuneCards, collection, foilCollection, prices, pricesLoading,
-  onAdjust, onAdjustFoil, onOpenModal, lookingFor = {}, upForTrade = {}, onToggleLF, onToggleUFT,
+  onAdjust, onAdjustFoil, onOpenModal, lookingFor = {}, upForTrade = {}, onToggleLF, onToggleUFT, onConsign,
 }) {
   if (!allRuneCards.length) return null;
 
@@ -89,6 +89,7 @@ export default function RuneBox({
                     upForTrade={upForTrade}
                     onToggleLF={onToggleLF}
                     onToggleUFT={onToggleUFT}
+                    onConsign={onConsign}
                   />
                 ))}
               </div>

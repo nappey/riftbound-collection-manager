@@ -12,7 +12,7 @@ const PROMO_SET_LABELS = {
 
 export default function PromoBox({
   allPromoCards, collection, foilCollection, prices, pricesLoading,
-  onAdjust, onAdjustFoil, onOpenModal, lookingFor, upForTrade, onToggleLF, onToggleUFT,
+  onAdjust, onAdjustFoil, onOpenModal, lookingFor, upForTrade, onToggleLF, onToggleUFT, onConsign,
 }) {
   if (!allPromoCards.length) return <div className="status-placeholder">No promo cards found.</div>;
 
@@ -30,7 +30,7 @@ export default function PromoBox({
 
   const gridProps = {
     collection, foilCollection, prices, pricesLoading,
-    onAdjust, onAdjustFoil, onOpenModal, lookingFor, upForTrade, onToggleLF, onToggleUFT,
+    onAdjust, onAdjustFoil, onOpenModal, lookingFor, upForTrade, onToggleLF, onToggleUFT, onConsign,
   };
 
   return (
