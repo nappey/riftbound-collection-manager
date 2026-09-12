@@ -77,7 +77,7 @@ export default function CardModal({ card, price, pricesLoading, onClose, onStart
                 <span className="m-val" style={{color: 'var(--ok)'}}>${normalPrice.toFixed(2)}</span>
               </div>
             )}
-            {!pricesLoading && foilPrice && (
+            {!pricesLoading && foilPrice && !price?.foilOnly && (
               <div className="modal-stat">
                 <span className="m-lbl">Foil</span>
                 <span className="m-val" style={{color: 'var(--warn)'}}>${foilPrice.toFixed(2)}</span>

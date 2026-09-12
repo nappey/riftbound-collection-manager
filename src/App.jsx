@@ -21,6 +21,7 @@ import { GameContext } from './games/GameContext';
 import { storageKeys, ACTIVE_GAME_KEY } from './games/storage';
 import { getCached, setCached } from './games/cardCache';
 import MerchantBtn from './components/MerchantBtn';
+import { completePrices } from './utils/analysis';
 import './App.css';
 import './pages.css';
 
@@ -206,7 +207,7 @@ function GameApp({ game, onSwitchGame }) {
   const cached = getCached(game.id);
   const [allCards, setAllCards] = useState(() => cached?.cards ?? []);
   const [progress, setProgress] = useState(null); // { done, total } while cards load
-  const [prices, setPrices] = useState(() => cached?.prices ?? {});
+  const [prices, setPrices] = useState(() => cached?.prices ?? {}); // already completed when cached
   const [pricesLoading, setPricesLoading] = useState(() => !cached?.prices);
   const [collection, setCollection] = useState(() => {
     try { return JSON.parse(localStorage.getItem(K.collection)) || {}; }
@@ -267,7 +268,7 @@ function GameApp({ game, onSwitchGame }) {
     }
     if (!have?.prices) {
       game.prices.load(TCGCSV_BASE)
-        .then((map) => { setCached(game.id, { prices: map }); setPrices(map); setPricesLoading(false); })
+        .then((raw) => { const map = completePrices(raw); setCached(game.id, { prices: map }); setPrices(map); setPricesLoading(false); })
         .catch(() => setPricesLoading(false));
     }
   }, [game, TCGCSV_BASE]);

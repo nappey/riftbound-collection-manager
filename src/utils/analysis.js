@@ -41,6 +41,22 @@ export function cardMarketValue(card, collection, foilCollection, prices) {
   return n * (p.normal?.market ?? 0) + f * (p.foil?.market ?? p.normal?.market ?? 0);
 }
 
+// Some printings only exist in one finish on TCGplayer — e.g. Riftbound
+// Overnumbered commons are foil-only even though their rarity says "common",
+// so the app tracks them as normal copies. Fill the missing finish from the
+// one that's listed so every lookup (tiles, merchant, stats, exports) prices
+// the physical card instead of finding nothing. `foilOnly` lets the UI avoid
+// showing the same number twice.
+export function completePrices(priceMap) {
+  const out = {};
+  for (const [id, p] of Object.entries(priceMap ?? {})) {
+    if (!p) continue;
+    if (!p.normal && p.foil) out[id] = { ...p, normal: p.foil, foilOnly: true };
+    else out[id] = p;
+  }
+  return out;
+}
+
 export function fmt$(n) {
   return '$' + (Number(n) || 0).toFixed(2);
 }

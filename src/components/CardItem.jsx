@@ -132,7 +132,7 @@ export default function CardItem({
                 ? <span className="price"><span className="meta-foil-sym">✦</span>{foilPriceVal ? fmt(foilPriceVal) : '—'}</span>
                 : normalPrice && <span className="price">{fmt(normalPrice)}</span>
               }
-              {!alwaysFoil && foilPriceVal && (
+              {!alwaysFoil && foilPriceVal && !price?.foilOnly && (
                 <span className="price foil-price"><span className="meta-foil-sym">✦</span>{fmt(foilPriceVal)}</span>
               )}
               {promos.map(({ card: promo, label, price: pp }) => {
