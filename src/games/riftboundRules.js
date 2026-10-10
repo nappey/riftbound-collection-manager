@@ -8,6 +8,7 @@ export const SETS = [
   { id: 'SFD', label: 'Spiritforged',          short: 'SFD' },
   { id: 'UNL', label: 'Unleashed',             short: 'UNL' },
   { id: 'VEN', label: 'Vendetta',              short: 'VEN' },
+  { id: 'RAD', label: 'Radiance',              short: 'RAD' },
   { id: 'OPP', label: 'Organized Play Promos', short: 'OP Promo', promo: true, fold: true },
   { id: 'PR',  label: 'Promotional Cards',     short: 'Promo',    promo: true, fold: true },
   { id: 'JDG', label: 'Judge Promos',          short: 'Judge',    promo: true, fold: true },

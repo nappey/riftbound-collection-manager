@@ -79,6 +79,38 @@ function computeDeckStats(analysis, deck, R) {
   };
 }
 
+// P(at least one hit) drawing `draws` cards without replacement from a
+// population of `pop` cards containing `successes` successes.
+function hyperAtLeastOne(pop, successes, draws) {
+  if (successes <= 0 || pop <= 0) return 0;
+  const n = Math.min(draws, pop);
+  if (pop - successes < n) return 1; // fewer misses than draws — a hit is guaranteed
+  let missChance = 1;
+  for (let i = 0; i < n; i++) missChance *= (pop - successes - i) / (pop - i);
+  return 1 - missChance;
+}
+
+// "Baited Hook" (Origins Gear): kill a friendly unit, look at the top 5 of the
+// Main Deck, and may banish + play a unit from among them with Might up to 1
+// more than the one killed. One row per unique unit in the deck — the odds of
+// finding a legal target on the dig if that unit is the one sacrificed. The
+// unit's own copy counts as already removed from the library (it's the one
+// dying), and the deck is otherwise assumed fresh/unseen.
+function computeBaitedHookOdds(analysis) {
+  const units = analysis.mainRows.filter(({ card }) => card.classification?.type === 'Unit');
+  if (!units.length) return null;
+  const pop = Math.max(0, analysis.mainCount - 1); // library remaining after the kill
+  return units
+    .map(({ card, qty }) => {
+      const might = card.attributes?.might ?? 0;
+      const ceiling = might + 1;
+      const qualifying = units.reduce((n, u) => ((u.card.attributes?.might ?? 0) <= ceiling ? n + u.qty : n), 0);
+      const successes = Math.max(0, qualifying - 1); // minus the copy that's being killed
+      return { card, qty, might, pct: hyperAtLeastOne(pop, successes, 5) };
+    })
+    .sort((a, b) => b.pct - a.pct || a.might - b.might || a.card.name.localeCompare(b.card.name));
+}
+
 // CSS color key for a faction pill: "Fury" → fury, "Red · 2 RAM" → red.
 const factionKey = (label) => String(label).split(/[\s·]/)[0].toLowerCase();
 
@@ -595,6 +627,8 @@ export default function DeckBuilder({
   const mDiceLosses = matches.length - mDiceWins;
 
   const stats = analysis ? computeDeckStats(analysis, active, R) : null;
+  const hasBaitedHook = analysis?.mainRows.some(r => r.card.name === 'Baited Hook') ?? false;
+  const baitedHookOdds = hasBaitedHook ? computeBaitedHookOdds(analysis) : null;
   const checklist = analysis ? R.validate({ deck: active, analysis, identityCards, champion }) : [];
   const hasTags = stats && Object.values(stats.tags).some(n => n > 0);
   const domainEntries = stats ? Object.entries(stats.domains).sort((a, b) => b[1] - a[1]) : [];
@@ -759,12 +793,12 @@ export default function DeckBuilder({
         </button>
         {renderArtPicker(card, 'tile', key)}
         <div className="db-mini-controls">
-          <button className="db-mini-rm" title="Remove this copy" onClick={() => adjustZone(zone, card.id, -1)}>−</button>
-          {zone !== 'main' && <button title="To main deck" onClick={() => moveCard(card.id, zone, 'main')}>M</button>}
-          {zone !== 'sideboard' && <button title="To sideboard" onClick={() => moveCard(card.id, zone, 'sideboard')}>SB</button>}
-          {zone !== 'bench' && <button title="To bench" onClick={() => moveCard(card.id, zone, 'bench')}>B</button>}
+          <button className="db-mini-rm" title="Remove this copy" onClick={() => adjustZone(zone, card.id, -1)}>✕</button>
+          {zone !== 'main' && <button className="db-mini-to-main" title="To main deck" onClick={() => moveCard(card.id, zone, 'main')}>M</button>}
+          {zone !== 'sideboard' && <button className="db-mini-to-sideboard" title="To sideboard" onClick={() => moveCard(card.id, zone, 'sideboard')}>SB</button>}
+          {zone !== 'bench' && <button className="db-mini-to-bench" title="To bench" onClick={() => moveCard(card.id, zone, 'bench')}>B</button>}
           <select className="db-tag-select" value={tag ?? ''} onChange={(e) => setTag(card.id, e.target.value)} title="Tag">
-            <option value="">tag…</option>
+            <option value="">🏷 tag…</option>
             {TAGS.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
@@ -1094,6 +1128,24 @@ export default function DeckBuilder({
                     {analysis.mainCount === 0 && <div className="db-stat-muted">No cards yet.</div>}
                   </div>
                 </div>
+
+                {/* Baited Hook — only shown when that Gear is in the main deck */}
+                {baitedHookOdds && (
+                  <div className="deck-stat-card db-hook-card">
+                    <h3>Baited Hook odds</h3>
+                    <p className="db-hook-note">Chance the top 5 cards hold a legal target (Might ≤ killed + 1) if that unit is the one sacrificed.</p>
+                    <div className="db-hook-rows">
+                      {baitedHookOdds.map(({ card, qty, might, pct }) => (
+                        <div key={card.id} className="db-hook-row">
+                          <span className="db-hook-name">{card.name} <span className="db-hook-qty">×{qty}</span></span>
+                          <span className="db-hook-might">{might} Might</span>
+                          <div className="db-hook-track"><span className="db-hook-fill" style={{ width: `${pct * 100}%` }} /></div>
+                          <span className="db-hook-pct">{Math.round(pct * 100)}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Domains */}
                 {domainEntries.length > 0 && (

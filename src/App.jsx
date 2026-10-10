@@ -663,6 +663,17 @@ function GameApp({ game, onSwitchGame }) {
             />
           ) : (
             <>
+              {/* Radiance notice — riftcodex hasn't ingested the set yet, so it
+                  can't appear as a real tab; this self-removes once it has. */}
+              {game.id === 'riftbound' && !setIds.includes('RAD') && game.features.setLogos.RAD && (
+                <div className="upcoming-set-banner">
+                  <img src={game.features.setLogos.RAD} alt="Radiance" className="upcoming-set-logo" />
+                  <span className="upcoming-set-text">
+                    <strong>Radiance</strong> launches <strong>October 23, 2026</strong> — its cards will appear here automatically once the set releases.
+                  </span>
+                </div>
+              )}
+
               {/* Set picker — scalable dropdown replacing the old tab strip */}
               <div className="set-picker-row">
                 <SetPicker
