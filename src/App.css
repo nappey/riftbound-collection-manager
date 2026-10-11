@@ -290,6 +290,8 @@
   margin-left: 2px;
 }
 .chip.active .chip-num { color: var(--accent); opacity: 0.7; }
+.chip.chip-all { border-style: dashed; border-color: var(--accent-line); color: var(--accent); }
+.chip.chip-all.active { border-style: solid; }
 
 .sidebar-sort {
   padding: 12px 8px 0;

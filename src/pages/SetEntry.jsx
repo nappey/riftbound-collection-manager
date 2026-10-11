@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { isAlwaysFoil, isSingleton, isBattlefield } from '../utils/playset';
 import { useGame } from '../games/GameContext';
 
@@ -22,6 +22,10 @@ const Check = () => (
     <polyline points="20 6 9 17 4 12"/>
   </svg>
 );
+
+// Sentinel set id for "All Sets" — step through every real set's cards for a
+// domain in one pass instead of one set at a time, for a mixed/unsorted pile.
+const ALL_SETS = '__all__';
 
 function sortByEnergy(cards) {
   return [...cards].sort((a, b) => {
@@ -56,31 +60,34 @@ function ConfigScreen({ allCards, onStart }) {
     });
   }, [allCards, game]);
 
+  const inSet = useCallback(
+    (c) => selectedSet === ALL_SETS || c.set?.set_id === selectedSet,
+    [selectedSet]
+  );
+
   const domains = useMemo(() => {
     if (!selectedSet) return [];
     const seen = new Set();
     for (const c of allCards) {
-      if (c.set?.set_id === selectedSet) {
-        (c.classification?.domain ?? []).forEach(d => seen.add(d));
-      }
+      if (inSet(c)) (c.classification?.domain ?? []).forEach(d => seen.add(d));
     }
     return [...seen].sort();
-  }, [allCards, selectedSet]);
+  }, [allCards, selectedSet, inSet]);
 
   const cardCount = useMemo(() => {
     if (!selectedSet || !selectedDomain) return 0;
     return allCards.filter(c =>
-      c.set?.set_id === selectedSet &&
+      inSet(c) &&
       (c.classification?.domain ?? []).includes(selectedDomain) &&
       !c.metadata?.alternate_art
     ).length;
-  }, [allCards, selectedSet, selectedDomain]);
+  }, [allCards, selectedSet, selectedDomain, inSet]);
 
   function handleStart() {
     if (!selectedSet || !selectedDomain) return;
     const cards = sortByEnergy(
       allCards.filter(c =>
-        c.set?.set_id === selectedSet &&
+        inSet(c) &&
         (c.classification?.domain ?? []).includes(selectedDomain) &&
         !c.metadata?.alternate_art
       )
@@ -98,6 +105,11 @@ function ConfigScreen({ allCards, onStart }) {
         <div className="se-config-field">
           <label>Set</label>
           <div className="chip-list">
+            <button
+              className={`chip chip-all${selectedSet === ALL_SETS ? ' active' : ''}`}
+              title="Step through every set's cards together, grouped only by domain and cost — handy for a mixed/unsorted pile"
+              onClick={() => { setSelectedSet(ALL_SETS); setSelectedDomain(''); }}
+            ><Sparkle /> All sets (mixed)</button>
             {sets.map(s => (
               <button
                 key={s}
@@ -145,10 +157,23 @@ function ConfigScreen({ allCards, onStart }) {
 
 // ── Card entry screen ──────────────────────────────────────────
 
-function CardEntryScreen({ cards, setLabel, domain, collection, foilCollection, onAdjust, onAdjustFoil, onDone, promoByName = {}, promoShortLabels = {} }) {
+function CardEntryScreen({
+  cards, setLabel, domain, collection, foilCollection, onAdjust, onAdjustFoil, onDone,
+  promoByName = {}, promoShortLabels = {}, initialIndex = 0, onIndexChange, showCardSet = false,
+}) {
   const game = useGame();
+  const SET_LABELS = game.setLabels;
   const RARITY_CLASS = game.rarityClass;
-  const [index, setIndex] = useState(0);
+  const [index, setIndexRaw] = useState(Math.min(initialIndex, cards.length - 1));
+  // Report the current position upward so leaving mid-domain (e.g. to pick a
+  // different domain in "All sets") and coming back resumes where we left off.
+  function setIndex(updater) {
+    setIndexRaw(i => {
+      const next = typeof updater === 'function' ? updater(i) : updater;
+      onIndexChange?.(next);
+      return next;
+    });
+  }
 
   const card        = cards[index];
   const alwaysFoil  = isAlwaysFoil(card);
@@ -218,6 +243,9 @@ function CardEntryScreen({ cards, setLabel, domain, collection, foilCollection, 
         </div>
         <div className="entry-meta-row">
           <span style={{fontFamily: 'var(--font-mono)', color: 'var(--text-3)', fontSize: 11}}>{card.code ?? card.id?.toUpperCase()}</span>
+          {showCardSet && (
+            <span style={{color: 'var(--accent)', fontSize: 12}}>{SET_LABELS[card.set?.set_id] ?? card.set?.set_id}</span>
+          )}
           <span style={{color: `var(--d-${(card.classification?.domain?.[0] ?? '').toLowerCase()})`, fontSize: 12}}>
             {card.classification?.domain?.[0]}
           </span>
@@ -409,20 +437,27 @@ export default function SetEntry({ allCards, collection, foilCollection, onAdjus
   const game = useGame();
   const SET_LABELS = game.setLabels;
   const [session, setSession] = useState(null);
+  // Remembers how far into each set+domain slice we got, keyed by
+  // "setId:domain" — so stepping away from a half-finished domain (to work a
+  // different one, or a different set) and coming back resumes in place
+  // instead of starting that slice over at card 1.
+  const [progress, setProgress] = useState({});
 
   if (!session) {
     return (
       <ConfigScreen
         allCards={allCards}
-        onStart={(cards, setId, domain) => setSession({ cards, setId, domain })}
+        onStart={(cards, setId, domain) => setSession({ cards, setId, domain, key: `${setId}:${domain}` })}
       />
     );
   }
 
   return (
     <CardEntryScreen
+      key={session.key}
       cards={session.cards}
-      setLabel={SET_LABELS[session.setId] ?? session.setId}
+      setLabel={session.setId === ALL_SETS ? 'All sets' : (SET_LABELS[session.setId] ?? session.setId)}
+      showCardSet={session.setId === ALL_SETS}
       domain={session.domain}
       collection={collection}
       foilCollection={foilCollection}
@@ -431,6 +466,8 @@ export default function SetEntry({ allCards, collection, foilCollection, onAdjus
       onDone={() => setSession(null)}
       promoByName={promoByName}
       promoShortLabels={promoShortLabels}
+      initialIndex={progress[session.key] ?? 0}
+      onIndexChange={(i) => setProgress(p => ({ ...p, [session.key]: i }))}
     />
   );
 }
