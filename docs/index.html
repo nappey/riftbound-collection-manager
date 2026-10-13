@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Riftbound Set Entry</title>
+<meta name="description" content="Step through your Riftbound cards by set, domain and cost, and import/export your counts as CSV — no app install required." />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="brand">Riftbound <span class="muted">/ Set Entry</span></div>
+    <div class="header-actions">
+      <button id="btn-export" class="btn" title="Download your counts as a CSV (Piltover Archive format)">Export CSV</button>
+      <label class="btn" for="csv-file" title="Load counts from a CSV — matched cards are overwritten, others untouched">Import CSV</label>
+      <input type="file" id="csv-file" accept=".csv" hidden />
+      <button id="btn-reset" class="btn ghost" title="Clear all counts and progress stored in this browser">Reset data</button>
+    </div>
+  </header>
+
+  <main id="app">
+    <div class="status-msg" id="status-msg">Loading card data from riftcodex…</div>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <footer class="site-footer">
+    Unofficial fan tool · card data from <a href="https://riftcodex.com" target="_blank" rel="noopener">riftcodex</a> ·
+    CSVs exported here import directly into the <a href="https://github.com/nappey/riftbound-collection-manager" target="_blank" rel="noopener">Riftbound Collection Manager</a> desktop app, and vice versa.
+  </footer>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

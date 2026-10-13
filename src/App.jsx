@@ -11,7 +11,6 @@ import CheckForUpdatesButton from './components/CheckForUpdatesButton';
 import SetPicker from './components/SetPicker';
 import Decks from './pages/Decks';
 import Export from './pages/Export';
-import SetEntry from './pages/SetEntry';
 import TradeBinder from './pages/TradeBinder';
 import Shopping from './pages/Shopping';
 import Stats from './pages/Stats';
@@ -538,7 +537,6 @@ function GameApp({ game, onSwitchGame }) {
             Collection
             {tab === 'collection' && <span className="tab-count">{totalVisible}</span>}
           </button>
-          <button className={`tab${tab === 'entry' ? ' tab--active' : ''}`} onClick={() => setTab('entry')}>Set Entry</button>
           <button className={`tab${tab === 'shopping' ? ' tab--active' : ''}`} onClick={() => setTab('shopping')}>Shopping</button>
           <button className={`tab${tab === 'trade' ? ' tab--active' : ''}`} onClick={() => setTab('trade')}>Trade Binder</button>
           <button className={`tab${tab === 'merchant' ? ' tab--active' : ''}`} onClick={() => setTab('merchant')}>Merchant</button>
@@ -579,17 +577,7 @@ function GameApp({ game, onSwitchGame }) {
 
         {/* Content */}
         <div className="content">
-          {tab === 'entry' ? (
-            <SetEntry
-              allCards={allCards}
-              collection={collection}
-              foilCollection={foilCollection}
-              onAdjust={adjust}
-              onAdjustFoil={adjustFoil}
-              promoByName={promoByName}
-              promoShortLabels={game.promoShortLabels}
-            />
-          ) : tab === 'decks' ? (
+          {tab === 'decks' ? (
             <Decks
               allCards={allCards}
               collection={collection}
