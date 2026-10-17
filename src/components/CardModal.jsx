@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useGame } from '../games/GameContext';
 
-export default function CardModal({ card, price, pricesLoading, onClose, onStartDeck }) {
+export default function CardModal({ card, price, pricesLoading, onClose, onStartDeck, friendOwners = [] }) {
   const game = useGame();
   const RARITY_CLASS = game.rarityClass;
   const { Component: CardText, split } = game.text;
@@ -94,6 +94,17 @@ export default function CardModal({ card, price, pricesLoading, onClose, onStart
           )}
 
           {flavour && <p className="modal-flavour">"{flavour}"</p>}
+
+          {friendOwners.length > 0 && (
+            <div className="modal-friends">
+              <span className="modal-friends-label">Friends who own this</span>
+              {friendOwners.map((f) => (
+                <span key={f.id} className="modal-tag-pill">
+                  {f.name} ×{f.normal + f.foil}{f.foil ? ` (${f.foil} foil)` : ''}
+                </span>
+              ))}
+            </div>
+          )}
 
           {card.media?.artist && (
             <div className="modal-footer-info">

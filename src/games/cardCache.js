@@ -9,3 +9,40 @@ export function getCached(gameId) {
 export function setCached(gameId, patch) {
   cache.set(gameId, { ...(cache.get(gameId) ?? {}), ...patch, loadedAt: Date.now() });
 }
+
+// ── On-disk card list (IndexedDB) ───────────────────────────────
+// The card APIs can take 30s+ to page through, so the last good card list is
+// kept on disk: launches render it immediately while a fresh copy loads in the
+// background. Too big for localStorage alongside the collections. Every call
+// degrades to a no-op if IndexedDB is unavailable.
+const DB_NAME = 'card-manager-cache';
+const STORE = 'cards';
+
+function openDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function loadStoredCards(gameId) {
+  try {
+    const db = await openDb();
+    return await new Promise((resolve) => {
+      const req = db.transaction(STORE).objectStore(STORE).get(gameId);
+      req.onsuccess = () => resolve(Array.isArray(req.result) && req.result.length ? req.result : null);
+      req.onerror = () => resolve(null);
+    });
+  } catch {
+    return null;
+  }
+}
+
+export async function storeCards(gameId, cards) {
+  try {
+    const db = await openDb();
+    db.transaction(STORE, 'readwrite').objectStore(STORE).put(cards, gameId);
+  } catch { /* cache is best-effort */ }
+}

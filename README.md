@@ -4,7 +4,18 @@ Desktop app for tracking your Riftbound TCG collection — prices, playsets, foi
 
 ## Download
 
-Go to [Releases](../../releases) and download the latest `.exe` installer (Windows).
+Go to [Releases](../../releases) and download the latest:
+
+- **Windows** — the `.exe` installer
+- **Mac (Apple Silicon — M1/M2/M3/M4)** — the `-arm64.dmg`. Open it and drag the app into Applications.
+
+The Mac build isn't notarized by Apple, so the first launch is blocked with *"app is damaged"* or *"can't be opened"*. Clear the download quarantine once in Terminal:
+
+```bash
+xattr -cr "/Applications/Riftbound Collection Manager.app"
+```
+
+On Mac the app tells you when an update is out and links to the new `.dmg` (Windows updates install automatically).
 
 ## Features
 
@@ -16,8 +27,36 @@ Go to [Releases](../../releases) and download the latest `.exe` installer (Windo
 - **Deck Check** — paste a deck list and see what you're missing
 - **Export** — Discord-ready code blocks or Markdown, filtered by set and content type
 - **CSV Import/Export** — round-trips with Piltover Archive export format
+- **Sync between devices** — Settings (⚙) → pick a file in Google Drive / iCloud / Dropbox / OneDrive; collection, decks, trade lists and Merchant stay in sync automatically
 - **Multi-game** — Riftbound (cards from riftcodex, prices from tcgcsv category 89) and Cyberpunk TCG (cards + every printing from the Netdeck.gg API behind cyberpunktcg.com, prices/product ids from tcgcsv category 92 `ProductsAndPrices.csv`). Game configs live in `src/games/` — adding a game means adding a config + adapter there.
 - **Cyberpunk deck builder** — 3 Legends, 40–50 card deck, 7-card sideboard, per-color RAM budget validation, Netdeck-format decklist import/export
+
+## Sync between devices
+
+The app can keep your data in step across computers (e.g. a Mac and a Windows PC) through any folder your cloud drive syncs. It doesn't need a Google sign-in.
+
+1. Install the desktop app for your cloud drive: [Google Drive for desktop](https://www.google.com/drive/download/), iCloud Drive, Dropbox or OneDrive.
+2. **First computer:** ⚙ Settings → **Create sync file…** → save it inside the synced folder.
+3. **Other computers:** ⚙ Settings → **Use existing sync file…** → pick that same file → choose **Use data from file**.
+
+From then on, every change is saved to the file within a couple of seconds. When another computer's newer changes arrive, they load automatically, replacing this computer's data; the newest change wins. Settings has **Undo last sync load** if that ever overwrites something you wanted. Turn on *Also save a collection CSV* to get a readable `riftbound-collection.csv` (Piltover Archive format) next to the sync file.
+
+Tip: avoid editing on two computers at the same moment; the later save wins.
+
+### Compare collections with friends
+
+Put everyone's sync file in **one shared folder** and each person's collection shows up in the **Friends** tab:
+
+1. Share a Google Drive folder with your friends. Each friend adds it to their own *My Drive* (right-click → *Organize → Add shortcut*) so Google Drive for desktop syncs it.
+2. Everyone sets **Your name** in ⚙ Settings, then **Create sync file…** inside that shared folder. Each person gets their own file, e.g. `card-manager-alex.json`. Only use *Use existing* to pick **your own** file on your other computers.
+3. Mark cards **LF** (Looking For) and **UFT** (Up For Trade) as usual.
+
+The Friends tab then shows:
+- what each friend can trade you, meaning cards you're Looking For that they have spare or marked UFT
+- what you can trade them
+- their full collection next to your counts
+
+Clicking a card shows which friends own it. Friends' files are only ever read, never changed. Everyone in the folder can see your collection, decks and trade lists.
 
 ## Development
 
@@ -25,7 +64,9 @@ Go to [Releases](../../releases) and download the latest `.exe` installer (Windo
 npm install              # install dependencies
 npm run dev              # browser-only dev server → http://localhost:5173
 npm run electron:dev     # Electron window + Vite hot-reload
-npm run electron:build   # build Windows installer → release/
+npm run electron:build   # build installer for the current OS → release/
+npm run electron:build:mac  # Apple Silicon .dmg/.zip → release/ (run on a Mac)
+npm run electron:build:win  # Windows installer → release/
 ```
 
 ## Publishing a Release
@@ -34,7 +75,7 @@ npm run electron:build   # build Windows installer → release/
 2. Commit: `git commit -am "chore: bump to vX.Y.Z"`
 3. Tag and push: `git tag vX.Y.Z && git push origin main --tags`
 
-GitHub Actions builds the Windows installer and creates a release automatically. Friends download from the [Releases](../../releases) page.
+GitHub Actions builds the Windows installer and the Apple Silicon Mac `.dmg` and creates a release automatically. Friends download from the [Releases](../../releases) page.
 
 # How to use
 

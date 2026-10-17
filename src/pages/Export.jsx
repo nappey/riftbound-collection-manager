@@ -1,6 +1,8 @@
 import { useMemo, useState, useCallback } from 'react';
 import { generateDiscord, generateMarkdown } from '../utils/generateExport';
 import { useGame } from '../games/GameContext';
+import ImportButton from '../components/ImportButton';
+import ExportButton from '../components/ExportButton';
 
 const DISCORD_LIMIT = 2000;
 const DEFAULT_CONTENT = { foils: true, champions: true, signatures: false, allOwned: false, lookingFor: false, upForTrade: false };
@@ -13,7 +15,7 @@ const CONTENT_LABELS = {
   upForTrade: 'Up-for-trade list',
 };
 
-export default function Export({ allCards, collection, foilCollection, prices, pricesLoading, lookingFor = {}, upForTrade = {} }) {
+export default function Export({ allCards, collection, foilCollection, prices, pricesLoading, lookingFor = {}, upForTrade = {}, onImport }) {
   const game = useGame();
   const { setOrder: SET_ORDER, setLabels: SET_LABELS } = game;
   const availableSets = useMemo(() => {
@@ -110,6 +112,15 @@ export default function Export({ allCards, collection, foilCollection, prices, p
               <input type="checkbox" checked={includePricing} onChange={e => setIncPricing(e.target.checked)} disabled={pricesLoading} />
               <span>{pricesLoading ? 'Pricing (loading…)' : 'Pricing'}</span>
             </label>
+          </div>
+        </div>
+
+        <div className="export-section">
+          <span className="export-section-title">Collection CSV</span>
+          <p style={{fontSize: 11.5, color: 'var(--text-3)', margin: 0}}>For backups or other collection tools.</p>
+          <div className="export-csv-actions">
+            <ExportButton allCards={allCards} collection={collection} foilCollection={foilCollection} />
+            {onImport && <ImportButton allCards={allCards} onImport={onImport} />}
           </div>
         </div>
       </aside>

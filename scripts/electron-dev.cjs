@@ -2,7 +2,8 @@
 
 // Electron 41 only intercepts require('electron') when loaded from an asar.
 // For dev mode: pack a minimal asar (electron files only, no dist/) and launch
-// the win-unpacked binary with ELECTRON_IS_DEV=1.
+// the packaged binary (win-unpacked on Windows, mac-arm64/*.app on macOS) with
+// ELECTRON_IS_DEV=1.
 // The React frontend loads from the Vite dev server at localhost:5173.
 
 const path = require('path');
@@ -11,12 +12,25 @@ const { spawn } = require('child_process');
 const asar = require('@electron/asar');
 
 const root    = path.join(__dirname, '..');
-const tmpDir  = path.join(root, 'release', 'asar-dev-tmp');
-const asarOut = path.join(root, 'release', 'win-unpacked', 'resources', 'app.asar');
-const binary  = path.join(root, 'release', 'win-unpacked', 'Riftbound Collection Manager.exe');
+const release = path.join(root, 'release');
+const tmpDir  = path.join(release, 'asar-dev-tmp');
+const appName = 'Riftbound Collection Manager';
+
+let asarOut, binary, buildCmd;
+if (process.platform === 'darwin') {
+  const macDir   = process.arch === 'arm64' ? 'mac-arm64' : 'mac';
+  const contents = path.join(release, macDir, `${appName}.app`, 'Contents');
+  asarOut  = path.join(contents, 'Resources', 'app.asar');
+  binary   = path.join(contents, 'MacOS', appName);
+  buildCmd = 'npm run electron:build:mac';
+} else {
+  asarOut  = path.join(release, 'win-unpacked', 'resources', 'app.asar');
+  binary   = path.join(release, 'win-unpacked', `${appName}.exe`);
+  buildCmd = 'npm run electron:build:win';
+}
 
 if (!fs.existsSync(binary)) {
-  console.error('win-unpacked not found — run npm run electron:build first.');
+  console.error(`Packaged app not found at ${binary} — run ${buildCmd} first.`);
   process.exit(1);
 }
 

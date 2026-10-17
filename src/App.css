@@ -3,6 +3,8 @@
    ============================================================ */
 
 .app {
+  position: relative;
+  z-index: 1; /* above the theme backdrop */
   min-height: 100vh;
   display: grid;
   grid-template-rows: var(--header-h) var(--subnav-h) 1fr;
@@ -16,11 +18,21 @@
   gap: 24px;
   padding: 0 24px;
   border-bottom: 1px solid var(--accent-line);
-  background: linear-gradient(90deg, oklch(0.72 0.15 282 / 0.12), oklch(0.66 0.16 200 / 0.06) 50%, transparent), oklch(0.150 0.020 282 / 0.85);
+  background: linear-gradient(90deg, color-mix(in oklch, var(--accent) 12%, transparent), color-mix(in oklch, var(--ambient) 6%, transparent) 50%, transparent), color-mix(in oklch, var(--bg-0) 85%, transparent);
   backdrop-filter: blur(10px);
   position: sticky;
   top: 0;
   z-index: 30;
+}
+
+/* macOS: the window uses an inset title bar, so the header doubles as the drag
+   handle and leaves room on the left for the traffic-light buttons. */
+.platform-darwin .app-header {
+  padding-left: 88px;
+  -webkit-app-region: drag;
+}
+.platform-darwin .app-header :is(button, input, select, a, .seg, .global-search) {
+  -webkit-app-region: no-drag;
 }
 
 .brand {
@@ -46,7 +58,7 @@
   position: absolute;
   inset: 4px;
   border-radius: 3px;
-  background: linear-gradient(135deg, var(--d-mind), var(--d-fury));
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
   opacity: 0.85;
   clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
 }
@@ -124,74 +136,136 @@
 
 /* ---- Subnav ---- */
 .subnav {
+  /* A transparent row: the dock and the stats panel float in it, and the
+     page scrolls visibly underneath. */
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   padding: 0 24px;
-  border-bottom: 1px solid var(--border-0);
-  background: oklch(0.150 0.020 282 / 0.8);
-  backdrop-filter: blur(10px);
   height: var(--subnav-h);
   position: sticky;
   top: var(--header-h);
   z-index: 20;
+  pointer-events: none;
+}
+.subnav > * { pointer-events: auto; }
+
+/* ── Sliding tabs (components/SlidingTabs.jsx) ── */
+.sliding-tabs { position: relative; display: flex; align-items: center; isolation: isolate; }
+.sliding-tabs-glider {
+  position: absolute; top: 0; left: 0; height: 100%; z-index: -1;
+  opacity: 0; pointer-events: none;
+}
+.sliding-tabs-glider[data-ready] {
+  transition: transform 0.5s cubic-bezier(0.34, 1.32, 0.5, 1), width 0.5s cubic-bezier(0.34, 1.32, 0.5, 1), opacity 0.2s;
+}
+.sliding-tab {
+  position: relative; display: inline-flex; align-items: center; gap: 8px;
+  border: none; background: transparent; font: inherit; cursor: pointer; white-space: nowrap;
+  transition: color 0.2s;
+}
+.sliding-tab-badge {
+  font-family: var(--font-mono); font-size: 10.5px; line-height: 1;
+  padding: 3px 6px; border-radius: 999px;
+  color: var(--text-2); background: var(--bg-3);
+  transition: color 0.2s, background 0.2s;
+}
+.sliding-tab[data-active="true"] .sliding-tab-badge { color: var(--accent); background: var(--accent-soft); }
+
+/* Main dock: a frosted pill floating under the header. */
+.nav-dock {
+  height: 44px; padding: 4px; gap: 2px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in oklch, var(--border-1) 80%, transparent);
+  background: color-mix(in oklch, var(--bg-1) 70%, transparent);
+  backdrop-filter: blur(16px) saturate(1.3);
+  box-shadow: 0 12px 32px oklch(0 0 0 / 0.45), 0 2px 6px oklch(0 0 0 / 0.3), inset 0 1px 0 oklch(1 0 0 / 0.05);
+}
+.nav-dock .sliding-tabs-glider {
+  top: 4px; height: calc(100% - 8px);
+  border-radius: 10px;
+  background: linear-gradient(135deg, color-mix(in oklch, var(--accent) 30%, transparent), color-mix(in oklch, var(--accent-2) 16%, transparent));
+  border: 1px solid var(--accent-line);
+  box-shadow: 0 0 20px var(--accent-glow), inset 0 1px 0 oklch(1 0 0 / 0.12);
+}
+/* a small diamond riding the bottom edge of the highlight */
+.nav-dock .sliding-tabs-glider::after {
+  content: ''; position: absolute; left: 50%; bottom: -4px; width: 7px; height: 7px;
+  transform: translateX(-50%) rotate(45deg);
+  background: var(--accent); box-shadow: 0 0 8px var(--accent-glow);
+}
+.nav-dock .sliding-tab {
+  height: 100%; padding: 0 16px; border-radius: 10px;
+  font-size: 13px; font-weight: 500; letter-spacing: 0.01em; color: var(--text-2);
+}
+.nav-dock .sliding-tab:hover { color: var(--text-0); background: color-mix(in oklch, var(--text-0) 4%, transparent); }
+.nav-dock .sliding-tab[data-active="true"] { color: var(--text-0); background: transparent; }
+.nav-dock .tab-icon { color: var(--text-3); flex-shrink: 0; transition: color 0.2s; }
+.nav-dock .sliding-tab:hover .tab-icon { color: var(--text-1); }
+.nav-dock .sliding-tab[data-active="true"] .tab-icon {
+  color: var(--accent); filter: drop-shadow(0 0 6px var(--accent-glow));
+  animation: tab-pop 0.45s cubic-bezier(0.34, 1.6, 0.5, 1);
+}
+@keyframes tab-pop {
+  0% { transform: scale(0.7) rotate(-12deg); }
+  60% { transform: scale(1.18) rotate(4deg); }
+  100% { transform: none; }
 }
 
-.tabs {
-  display: flex;
-  align-items: stretch;
-  height: 100%;
-  gap: 0;
+/* Page sub-tabs: same glider, quieter. */
+.sub-tabs {
+  height: 34px; padding: 3px; gap: 2px;
+  border-radius: 10px; border: 1px solid var(--border-0);
+  background: color-mix(in oklch, var(--bg-1) 75%, transparent);
+}
+.sub-tabs .sliding-tabs-glider {
+  top: 3px; height: calc(100% - 6px); border-radius: 7px;
+  background: var(--bg-3); border: 1px solid var(--accent-line);
+  box-shadow: 0 2px 10px oklch(0 0 0 / 0.3), 0 0 12px color-mix(in oklch, var(--accent) 18%, transparent);
+}
+.sub-tabs .sliding-tab { height: 100%; padding: 0 14px; border-radius: 7px; font-size: 12.5px; color: var(--text-2); }
+.sub-tabs .sliding-tab:hover { color: var(--text-0); }
+.sub-tabs .sliding-tab[data-active="true"] { color: var(--text-0); }
+
+/* Page content eases in on every tab switch. */
+.page-enter { animation: page-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1); }
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
 }
 
-.tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 14px;
-  font-size: 13px;
-  color: var(--text-2);
-  border: none;
-  background: transparent;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  font-weight: 500;
-  cursor: pointer;
+@media (prefers-reduced-motion: reduce) {
+  .sliding-tabs-glider[data-ready], .sliding-tab, .nav-dock .tab-icon { transition: none; }
+  .nav-dock .sliding-tab[data-active="true"] .tab-icon, .page-enter { animation: none; }
 }
-.tab:hover { color: var(--text-0); }
-.tab.tab--active {
-  color: var(--text-0);
-  border-image: linear-gradient(90deg, var(--accent), var(--d-mind)) 1;
-  border-bottom-width: 2px;
-  border-bottom-style: solid;
-}
-.tab .tab-count {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: var(--text-3);
-  background: var(--bg-2);
-  border-radius: 4px;
-  padding: 1px 5px;
-}
-.tab.tab--active .tab-count { background: var(--accent-soft); color: var(--accent); }
 
+/* Stats: one compact panel, values in mono, a meter under Complete. */
 .stats-row {
   display: flex;
-  gap: 18px;
-  align-items: center;
-  font-size: 12px;
+  align-items: stretch;
+  height: 38px;
+  border: 1px solid color-mix(in oklch, var(--border-1) 80%, transparent);
+  border-radius: 12px;
+  background: color-mix(in oklch, var(--bg-1) 70%, transparent);
+  backdrop-filter: blur(16px) saturate(1.3);
+  box-shadow: 0 12px 32px oklch(0 0 0 / 0.4), inset 0 1px 0 oklch(1 0 0 / 0.05);
+  overflow: hidden;
 }
 .stat {
+  position: relative;
   display: flex;
-  align-items: baseline;
-  gap: 6px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
 }
+.stat + .stat { border-left: 1px solid var(--border-0); }
 .stat .stat-label {
   color: var(--text-3);
-  font-size: 11px;
+  font-size: 10px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
 }
 .stat .stat-value {
   color: var(--text-0);
@@ -200,6 +274,18 @@
   font-family: var(--font-mono);
   font-size: 12.5px;
 }
+.stat .stat-of { color: var(--text-3); font-weight: 500; }
+.stat--complete .stat-value { color: var(--accent); }
+.stat-meter {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
+  background: var(--bg-3);
+}
+.stat-meter > span {
+  display: block; height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  box-shadow: 0 0 6px var(--accent-glow);
+}
+
 
 /* ---- Main layout ---- */
 .main {
@@ -384,7 +470,7 @@
   left: 0;
   width: max(320px, 100%);
   max-width: 92vw;
-  background: oklch(0.183 0.024 282 / 0.98);
+  background: color-mix(in oklch, var(--bg-1) 98%, transparent);
   border: 1px solid var(--border-1);
   border-radius: 10px;
   box-shadow: 0 18px 50px oklch(0 0 0 / 0.5), 0 0 0 1px var(--accent-soft);
@@ -502,7 +588,7 @@
 .set-cover:hover {
   transform: translateY(-1px);
   border-color: var(--accent);
-  box-shadow: 0 4px 14px oklch(0.72 0.15 282 / 0.3);
+  box-shadow: 0 4px 14px var(--accent-glow);
 }
 .set-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .set-logo {
@@ -1451,7 +1537,7 @@
   max-width: calc(100vw - 36px);
   padding: 12px 14px;
   border-radius: var(--radius-lg);
-  background: oklch(0.183 0.024 282 / 0.96);
+  background: color-mix(in oklch, var(--bg-1) 96%, transparent);
   border: 1px solid var(--accent-line);
   box-shadow: 0 16px 40px oklch(0 0 0 / 0.5), 0 0 0 1px var(--accent-soft);
   backdrop-filter: blur(12px);
@@ -1472,7 +1558,7 @@
 .update-toast-title { font-size: 12.5px; font-weight: 600; color: var(--text-0); }
 .update-toast-sub { font-size: 11.5px; color: var(--text-2); margin-top: 1px; }
 .update-toast-bar { height: 5px; border-radius: 999px; background: var(--bg-3); overflow: hidden; margin-top: 7px; }
-.update-toast-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--d-mind)); transition: width 0.2s ease; }
+.update-toast-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width 0.2s ease; }
 .update-toast-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .update-toast-x { width: 26px; padding: 0; justify-content: center; }
 
