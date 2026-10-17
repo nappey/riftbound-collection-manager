@@ -13,23 +13,28 @@ import { defineGame } from './defineGame';
 const API_BASE = 'https://api.riftcodex.com';
 const PAGE_SIZE = 100;
 
-async function fetchAllCards() {
+async function fetchAllCards(onProgress) {
   // no-store so new sets/cards always appear on launch instead of being served
   // a stale cached response from disk.
   const first = await fetch(`${API_BASE}/cards?size=${PAGE_SIZE}&page=1`, { cache: 'no-store' }).then((r) => {
     if (!r.ok) throw new Error(`API error: ${r.status}`);
     return r.json();
   });
+  let done = 1;
+  onProgress?.(done, first.pages);
   const remaining = [];
   for (let p = 2; p <= first.pages; p++) {
-    remaining.push(fetch(`${API_BASE}/cards?size=${PAGE_SIZE}&page=${p}`, { cache: 'no-store' }).then((r) => r.json()));
+    remaining.push(fetch(`${API_BASE}/cards?size=${PAGE_SIZE}&page=${p}`, { cache: 'no-store' }).then((r) => r.json()).then((d) => {
+      onProgress?.(++done, first.pages);
+      return d;
+    }));
   }
   const rest = await Promise.all(remaining);
   return [first, ...rest].flatMap((d) => d.items);
 }
 
-async function loadCards({ tcgcsvBase }) {
-  let cards = await fetchAllCards();
+async function loadCards({ tcgcsvBase }, onProgress) {
+  let cards = await fetchAllCards(onProgress);
   // The API re-ingests some sets (currently Vendetta), serving each card
   // several times under different ids. Drop the ghosts before anything
   // downstream counts or groups them.

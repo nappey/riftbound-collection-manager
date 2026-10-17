@@ -1,9 +1,12 @@
 'use strict';
 
-const { app, BrowserWindow, session, ipcMain, net } = require('electron');
+const { app, BrowserWindow, session, ipcMain, net, shell, dialog } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
 const isDev = process.env.ELECTRON_IS_DEV === '1';
+const isMac = process.platform === 'darwin';
+const RELEASES_URL = 'https://github.com/nappey/riftbound-collection-manager/releases/latest';
 
 // Fetch an image in the main process (no CORS) and return a data URL. The deck
 // image export draws these onto a canvas; data URLs never taint it.
@@ -21,6 +24,142 @@ ipcMain.handle('fetch-image', async (_e, url) => {
 });
 
 let mainWindow = null;
+
+ipcMain.handle('app:version', () => app.getVersion());
+
+// ── Sync file ──────────────────────────────────────────────────
+// The renderer saves every game's data to one JSON file the user picks —
+// normally inside a cloud-synced folder (Google Drive, iCloud, Dropbox) so it
+// travels between devices. The main process owns the path: the renderer can
+// only read/write *the chosen file*, never an arbitrary one.
+const SYNC_GAME_IDS = new Set(['riftbound', 'cyberpunk']);
+const syncSettingsFile = () => path.join(app.getPath('userData'), 'sync-settings.json');
+let syncConfig = { path: null, csvCopy: false };
+let watchedPath = null;
+
+function loadSyncConfig() {
+  try { syncConfig = { ...syncConfig, ...JSON.parse(fs.readFileSync(syncSettingsFile(), 'utf8')) }; }
+  catch { /* no settings yet */ }
+}
+function saveSyncConfig() {
+  try { fs.writeFileSync(syncSettingsFile(), JSON.stringify(syncConfig, null, 2)); }
+  catch (err) { console.error('[sync] could not save settings:', err?.message ?? err); }
+}
+
+// Write via a temp file + rename so another device never reads half a file.
+function writeAtomic(file, text) {
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, text);
+  fs.renameSync(tmp, file);
+  return fs.statSync(file).mtimeMs;
+}
+
+// Poll rather than fs.watch: cloud clients replace files in ways native
+// watchers miss, and a 5s poll on one small file is cheap.
+function watchSyncFile() {
+  if (watchedPath) fs.unwatchFile(watchedPath);
+  watchedPath = syncConfig.path;
+  if (!watchedPath) return;
+  fs.watchFile(watchedPath, { interval: 5000 }, (cur, prev) => {
+    if (cur.mtimeMs !== prev.mtimeMs && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('sync:file-changed', { mtimeMs: cur.mtimeMs });
+    }
+  });
+}
+
+const publicConfig = () => ({ path: syncConfig.path, csvCopy: !!syncConfig.csvCopy });
+
+ipcMain.handle('sync:get-config', () => publicConfig());
+
+// mode 'new' → save dialog (first device); 'existing' → open dialog (picking
+// the file another device already syncs to).
+ipcMain.handle('sync:choose', async (_e, mode, ownerName) => {
+  // Name new files after their owner so friends sharing a folder don't collide.
+  const slug = String(ownerName ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+  const defaultPath = syncConfig.path ?? path.join(app.getPath('documents'), `card-manager-${slug || 'sync'}.json`);
+  const filters = [{ name: 'Card Manager sync', extensions: ['json'] }];
+  let file = null;
+  if (mode === 'existing') {
+    const res = await dialog.showOpenDialog(mainWindow ?? undefined, {
+      title: 'Choose your existing sync file', defaultPath, filters, properties: ['openFile'],
+    });
+    if (!res.canceled) file = res.filePaths[0] ?? null;
+  } else {
+    const res = await dialog.showSaveDialog(mainWindow ?? undefined, {
+      title: 'Create sync file', buttonLabel: 'Create', defaultPath, filters, properties: ['createDirectory'],
+    });
+    if (!res.canceled) file = res.filePath ?? null;
+  }
+  if (!file) return null;
+  syncConfig.path = file;
+  saveSyncConfig();
+  watchSyncFile();
+  return { ...publicConfig(), exists: fs.existsSync(file) };
+});
+
+ipcMain.handle('sync:disable', () => {
+  syncConfig.path = null;
+  saveSyncConfig();
+  watchSyncFile();
+  return publicConfig();
+});
+
+ipcMain.handle('sync:set-csv-copy', (_e, on) => {
+  syncConfig.csvCopy = !!on;
+  saveSyncConfig();
+  return publicConfig();
+});
+
+ipcMain.handle('sync:read', () => {
+  if (!syncConfig.path) return null;
+  try {
+    return { text: fs.readFileSync(syncConfig.path, 'utf8'), mtimeMs: fs.statSync(syncConfig.path).mtimeMs };
+  } catch (err) {
+    if (err?.code === 'ENOENT') return null;
+    throw err;
+  }
+});
+
+ipcMain.handle('sync:write', (_e, text) => {
+  if (!syncConfig.path || typeof text !== 'string') return null;
+  return writeAtomic(syncConfig.path, text);
+});
+
+// Synchronous variant so the renderer can flush unsaved edits on quit.
+ipcMain.on('sync:write-now', (e, text) => {
+  try {
+    e.returnValue = syncConfig.path && typeof text === 'string' ? writeAtomic(syncConfig.path, text) : null;
+  } catch {
+    e.returnValue = null;
+  }
+});
+
+// Friends: every other sync file in the same folder, read-only. The renderer
+// keeps only the ones that parse as Card Manager files.
+const MAX_FRIEND_FILE = 20 * 1024 * 1024;
+ipcMain.handle('sync:read-friends', () => {
+  if (!syncConfig.path) return [];
+  const dir = path.dirname(syncConfig.path);
+  const own = path.basename(syncConfig.path);
+  let names = [];
+  try { names = fs.readdirSync(dir); } catch { return []; }
+  const out = [];
+  for (const name of names) {
+    if (name === own || !name.toLowerCase().endsWith('.json') || name.startsWith('.')) continue;
+    const file = path.join(dir, name);
+    try {
+      const st = fs.statSync(file);
+      if (!st.isFile() || st.size > MAX_FRIEND_FILE) continue;
+      out.push({ file: name, mtimeMs: st.mtimeMs, text: fs.readFileSync(file, 'utf8') });
+    } catch { /* unreadable / still syncing — skip */ }
+  }
+  return out;
+});
+
+ipcMain.handle('sync:write-csv', (_e, gameId, text) => {
+  if (!syncConfig.path || !syncConfig.csvCopy || !SYNC_GAME_IDS.has(gameId) || typeof text !== 'string') return null;
+  return writeAtomic(path.join(path.dirname(syncConfig.path), `${gameId}-collection.csv`), text);
+});
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -96,11 +235,16 @@ function initAutoUpdate() {
   });
   // Quit and install a downloaded update right now.
   ipcMain.handle('update:install', () => { if (autoUpdater) autoUpdater.quitAndInstall(); });
+  // macOS: open the latest release so the user can grab the new .dmg.
+  ipcMain.handle('update:open-download', () => shell.openExternal(RELEASES_URL));
 
   if (!autoUpdater) return;
 
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true; // install on quit if not restarted sooner
+  // The Mac build is ad-hoc signed (no Apple Developer ID), and Squirrel.Mac
+  // refuses to install updates that aren't signed with a real identity. So on
+  // macOS we only check — the renderer shows a "Download" link instead.
+  autoUpdater.autoDownload = !isMac;
+  autoUpdater.autoInstallOnAppQuit = !isMac; // install on quit if not restarted sooner
 
   // ── Update security hardening ──────────────────────────────────
   // electron-updater downloads `latest.yml` over HTTPS from the GitHub repo and
@@ -126,7 +270,11 @@ function initAutoUpdate() {
   autoUpdater.allowPrerelease = false;
 
   autoUpdater.on('checking-for-update', () => sendStatus({ state: 'checking' }));
-  autoUpdater.on('update-available', (info) => sendStatus({ state: 'downloading', version: info?.version, percent: 0 }));
+  autoUpdater.on('update-available', (info) => sendStatus(
+    isMac
+      ? { state: 'available', version: info?.version }
+      : { state: 'downloading', version: info?.version, percent: 0 }
+  ));
   autoUpdater.on('update-not-available', () => sendStatus({ state: 'none' }));
   autoUpdater.on('download-progress', (p) => sendStatus({ state: 'downloading', percent: Math.round(p?.percent ?? 0) }));
   autoUpdater.on('update-downloaded', (info) => sendStatus({ state: 'ready', version: info?.version }));
@@ -138,6 +286,8 @@ function initAutoUpdate() {
 }
 
 app.whenReady().then(() => {
+  loadSyncConfig();
+  watchSyncFile();
   createWindow();
   initAutoUpdate();
   app.on('activate', () => {

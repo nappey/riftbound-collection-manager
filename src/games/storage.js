@@ -2,6 +2,13 @@
 // so existing collections keep loading; every other game is prefixed by id.
 export const ACTIVE_GAME_KEY = 'card-manager-active-game';
 
+// Device sync (see src/sync/). Not per-game: one sync file covers every game.
+export const DEVICE_ID_KEY   = 'card-manager-device-id';
+export const SYNC_META_KEY   = 'card-manager-sync-meta';   // { lastSavedAt, lastAppliedAt }
+export const SYNC_BACKUP_KEY = 'card-manager-sync-backup'; // local data from before the last sync load
+export const THEME_KEY = 'card-manager-theme'; // per-device appearance choice
+export const DISPLAY_NAME_KEY = 'card-manager-display-name'; // shown to friends sharing the sync folder
+
 export function storageKeys(gameId) {
   const p = gameId; // 'riftbound' → the legacy keys below, byte-for-byte
   return {

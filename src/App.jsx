@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import SetSection from './components/SetSection';
 import RuneBox from './components/RuneBox';
 import PromoBox from './components/PromoBox';
@@ -7,7 +7,6 @@ import ImportButton from './components/ImportButton';
 import ExportButton from './components/ExportButton';
 import CardModal from './components/CardModal';
 import UpdateToast from './components/UpdateToast';
-import CheckForUpdatesButton from './components/CheckForUpdatesButton';
 import SetPicker from './components/SetPicker';
 import Decks from './pages/Decks';
 import Export from './pages/Export';
@@ -15,10 +14,16 @@ import TradeBinder from './pages/TradeBinder';
 import Shopping from './pages/Shopping';
 import Stats from './pages/Stats';
 import TravelingMerchant from './pages/TravelingMerchant';
+import Settings from './pages/Settings';
+import Friends from './pages/Friends';
+import SyncIndicator from './components/SyncIndicator';
+import ThemeBackdrop from './components/ThemeBackdrop';
+import SlidingTabs from './components/SlidingTabs';
+import { SyncProvider, useSync } from './sync/SyncContext';
 import { GAMES, GAME_IDS, DEFAULT_GAME, getGame } from './games';
 import { GameContext } from './games/GameContext';
 import { storageKeys, ACTIVE_GAME_KEY } from './games/storage';
-import { getCached, setCached } from './games/cardCache';
+import { getCached, setCached, loadStoredCards, storeCards } from './games/cardCache';
 import MerchantBtn from './components/MerchantBtn';
 import { completePrices } from './utils/analysis';
 import './App.css';
@@ -130,6 +135,36 @@ const SearchIcon = () => (
     <circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
   </svg>
 );
+
+const GearIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+  </svg>
+);
+
+// Nav icons — 16px line art in the current text color.
+const navIcon = (children) => (
+  <svg className="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {children}
+  </svg>
+);
+const NAV_ICONS = {
+  collection: navIcon(<><rect x="7" y="3" width="12" height="16" rx="2" /><path d="M4 7v12a2 2 0 0 0 2 2h9" /></>),
+  trade: navIcon(<><path d="M4 8h13l-3-3" /><path d="M20 16H7l3 3" /></>),
+  decks: navIcon(<><rect x="4" y="6" width="11" height="15" rx="2" transform="rotate(-8 9.5 13.5)" /><rect x="9" y="3" width="11" height="15" rx="2" /></>),
+  export: navIcon(<><path d="M12 15V3" /><path d="m7 8 5-5 5 5" /><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" /></>),
+};
+
+// Top-level tabs group related pages; each page keeps its own id in `tab`.
+// Groups with several pages show a sub-tab switcher above the content.
+const NAV = [
+  { id: 'collection', label: 'Collection', pages: [['collection', 'Cards'], ['stats', 'Stats'], ['shopping', 'Shopping List']] },
+  { id: 'trade', label: 'Trade', pages: [['trade', 'Binder'], ['friends', 'Friends'], ['merchant', 'Merchant']] },
+  { id: 'decks', label: 'Decks', pages: [['decks', 'Decks']] },
+  { id: 'export', label: 'Export', pages: [['export', 'Export']] },
+];
+const navGroupOf = (page) => NAV.find(g => g.pages.some(([id]) => id === page)) ?? null;
 const GridIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
@@ -192,10 +227,20 @@ export default function App() {
   useEffect(() => { try { localStorage.setItem(ACTIVE_GAME_KEY, gameId); } catch { /* ignore */ } }, [gameId]);
   const game = getGame(gameId);
   return (
-    <GameContext.Provider value={game}>
-      <GameApp key={game.id} game={game} onSwitchGame={setGameId} />
-    </GameContext.Provider>
+    <SyncProvider>
+      <ThemeBackdrop />
+      <GameContext.Provider value={game}>
+        <SyncedGameApp game={game} onSwitchGame={setGameId} />
+      </GameContext.Provider>
+    </SyncProvider>
   );
+}
+
+// When sync loads another device's data into localStorage, dataVersion bumps
+// and the game remounts — the same re-read-everything path as a game switch.
+function SyncedGameApp({ game, onSwitchGame }) {
+  const { dataVersion } = useSync();
+  return <GameApp key={`${game.id}-${dataVersion}`} game={game} onSwitchGame={onSwitchGame} />;
 }
 
 function GameApp({ game, onSwitchGame }) {
@@ -239,14 +284,22 @@ function GameApp({ game, onSwitchGame }) {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [sort, setSort] = useState(DEFAULT_SORT);
   const [modalCard, setModalCard] = useState(null);
-  const [tab, setTab] = useState('collection');
+  const [tab, setTabState] = useState('collection');
+  // Last page visited in each group, so clicking a group tab returns there.
+  const [lastPage, setLastPage] = useState({});
+  const setTab = useCallback((page) => {
+    setTabState(page);
+    const g = navGroupOf(page);
+    if (g) setLastPage(lp => (lp[g.id] === page ? lp : { ...lp, [g.id]: page }));
+  }, []);
+  const activeGroup = navGroupOf(tab);
   // Signal to the deck builder to create + open a new deck seeded with a Legend.
   const [newDeckLegend, setNewDeckLegend] = useState(null);
   const startDeckWithLegend = useCallback((card) => {
     setNewDeckLegend(card);
     setModalCard(null);
     setTab('decks');
-  }, []);
+  }, [setTab]);
   const consumeNewDeckLegend = useCallback(() => setNewDeckLegend(null), []);
   const [activeSetId, setActiveSetId] = useState(null);
   const [view, setView] = useState('grid');
@@ -256,14 +309,30 @@ function GameApp({ game, onSwitchGame }) {
   useEffect(() => {
     const have = getCached(game.id);
     if (!have?.cards) {
+      // Show the last card list saved on disk right away (if any) while the
+      // fresh one loads; the network copy replaces it when it arrives.
+      let fresh = false;
+      let shownStored = false;
+      loadStoredCards(game.id).then((stored) => {
+        if (!stored || fresh) return;
+        shownStored = true;
+        setAllCards(stored);
+        setLoading(false);
+      });
       game.api.loadCards({ isElectron: IS_ELECTRON, tcgcsvBase: TCGCSV_BASE, netdeckBase: NETDECK_BASE },
         (done, total) => setProgress({ done, total }))
         .then((cards) => {
+          fresh = true;
           setCached(game.id, { cards });
+          storeCards(game.id, cards);
           setAllCards(cards);
           setLoading(false);
         })
-        .catch((err) => { setError(err.message); setLoading(false); });
+        .catch((err) => {
+          if (shownStored) return; // keep the saved cards rather than erroring
+          setError(err.message);
+          setLoading(false);
+        });
     }
     if (!have?.prices) {
       game.prices.load(TCGCSV_BASE)
@@ -299,6 +368,31 @@ function GameApp({ game, onSwitchGame }) {
   useEffect(() => { localStorage.setItem(K.decks, JSON.stringify(decks)); }, [K.decks, decks]);
   useEffect(() => { localStorage.setItem(K.merchant, JSON.stringify(merchant)); }, [K.merchant, merchant]);
   useEffect(() => { localStorage.setItem(K.vendor, vendorName); }, [K.vendor, vendorName]);
+
+  // Mirror edits to the sync file (no-op when sync is off). Skips the mount,
+  // which is just the saved data being read back.
+  const { scheduleSave, setCsvWriter, friends } = useSync();
+  // Friends (sync-folder neighbours) who own the card open in the modal.
+  const modalFriendOwners = useMemo(() => {
+    if (!modalCard) return [];
+    return friends.flatMap((f) => {
+      const g = f.games?.[game.id];
+      const normal = g?.collection?.[modalCard.id] ?? 0;
+      const foil = g?.foil?.[modalCard.id] ?? 0;
+      return normal + foil > 0 ? [{ id: f.id, name: f.name, normal, foil }] : [];
+    });
+  }, [modalCard, friends, game.id]);
+
+  const syncMounted = useRef(false);
+  useEffect(() => {
+    if (!syncMounted.current) { syncMounted.current = true; return; }
+    scheduleSave();
+  }, [scheduleSave, collection, foilCollection, lookingFor, upForTrade, decks, merchant, vendorName]);
+  useEffect(() => {
+    setCsvWriter(allCards.length
+      ? () => window.__electron__?.sync?.writeCsv(game.id, game.csv.generate(allCards, collection, foilCollection))
+      : null);
+  }, [setCsvWriter, game, allCards, collection, foilCollection]);
 
   function adjust(cardId, delta) {
     setCollection((prev) => {
@@ -424,7 +518,7 @@ function GameApp({ game, onSwitchGame }) {
   }, [allCards, collection, foilCollection, game]);
 
   if (loading) return (
-    <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--text-3)', fontFamily: 'var(--font-mono)'}}>
+    <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--text-2)', fontFamily: 'var(--font-mono)'}}>
       Loading {game.label} cards…{progress && progress.total ? ` (${progress.done}/${progress.total})` : ''}
     </div>
   );
@@ -524,7 +618,15 @@ function GameApp({ game, onSwitchGame }) {
         </div>
 
         <div className="header-right">
-          <CheckForUpdatesButton />
+          <SyncIndicator onClick={() => setTab('settings')} />
+          <button
+            className={`btn ghost btn-sq${tab === 'settings' ? ' active' : ''}`}
+            onClick={() => setTab('settings')}
+            title="Settings"
+            aria-label="Settings"
+          >
+            <GearIcon />
+          </button>
           <ExportButton allCards={allCards} collection={collection} foilCollection={foilCollection} />
           <ImportButton allCards={allCards} onImport={handleImport} />
         </div>
@@ -532,18 +634,18 @@ function GameApp({ game, onSwitchGame }) {
 
       {/* ── Subnav ── */}
       <div className="subnav">
-        <nav className="tabs">
-          <button className={`tab${tab === 'collection' ? ' tab--active' : ''}`} onClick={() => setTab('collection')}>
-            Collection
-            {tab === 'collection' && <span className="tab-count">{totalVisible}</span>}
-          </button>
-          <button className={`tab${tab === 'shopping' ? ' tab--active' : ''}`} onClick={() => setTab('shopping')}>Shopping</button>
-          <button className={`tab${tab === 'trade' ? ' tab--active' : ''}`} onClick={() => setTab('trade')}>Trade Binder</button>
-          <button className={`tab${tab === 'merchant' ? ' tab--active' : ''}`} onClick={() => setTab('merchant')}>Merchant</button>
-          <button className={`tab${tab === 'stats' ? ' tab--active' : ''}`} onClick={() => setTab('stats')}>Stats</button>
-          <button className={`tab${tab === 'decks' ? ' tab--active' : ''}`} onClick={() => setTab('decks')}>Decks</button>
-          <button className={`tab${tab === 'export' ? ' tab--active' : ''}`} onClick={() => setTab('export')}>Export</button>
-        </nav>
+        <SlidingTabs
+          className="nav-dock"
+          ariaLabel="Sections"
+          active={activeGroup?.id}
+          onSelect={(id) => { const g = NAV.find(n => n.id === id); setTab(lastPage[id] ?? g.pages[0][0]); }}
+          items={NAV.map(g => ({
+            id: g.id,
+            label: g.label,
+            icon: NAV_ICONS[g.id],
+            badge: g.id === 'collection' && tab === 'collection' ? totalVisible : null,
+          }))}
+        />
         <div className="stats-row">
           {globalStats.value != null && (
             <div className="stat">
@@ -553,11 +655,12 @@ function GameApp({ game, onSwitchGame }) {
           )}
           <div className="stat">
             <span className="stat-label">Owned</span>
-            <span className="stat-value">{globalStats.owned}/{globalStats.total}</span>
+            <span className="stat-value">{globalStats.owned}<span className="stat-of">/{globalStats.total}</span></span>
           </div>
-          <div className="stat">
+          <div className="stat stat--complete">
             <span className="stat-label">Complete</span>
             <span className="stat-value">{globalStats.pct}%</span>
+            <span className="stat-meter" aria-hidden="true"><span style={{ width: `${Math.min(100, globalStats.pct)}%` }} /></span>
           </div>
         </div>
       </div>
@@ -577,221 +680,197 @@ function GameApp({ game, onSwitchGame }) {
 
         {/* Content */}
         <div className="content">
-          {tab === 'decks' ? (
-            <Decks
-              allCards={allCards}
-              collection={collection}
-              foilCollection={foilCollection}
-              prices={prices}
-              pricesLoading={pricesLoading}
-              decks={decks}
-              setDecks={setDecks}
-              onOpenModal={setModalCard}
-              newDeckLegend={newDeckLegend}
-              onNewDeckConsumed={consumeNewDeckLegend}
-            />
-          ) : tab === 'shopping' ? (
-            <Shopping
-              allCards={allCards}
-              collection={collection}
-              foilCollection={foilCollection}
-              prices={prices}
-              pricesLoading={pricesLoading}
-              lookingFor={lookingFor}
-              onToggleLF={toggleLF}
-              onOpenModal={setModalCard}
-            />
-          ) : tab === 'trade' ? (
-            <TradeBinder
-              allCards={allCards}
-              collection={collection}
-              foilCollection={foilCollection}
-              prices={prices}
-              pricesLoading={pricesLoading}
-              lookingFor={lookingFor}
-              upForTrade={upForTrade}
-              onToggleLF={toggleLF}
-              onToggleUFT={toggleUFT}
-              onOpenModal={setModalCard}
-            />
-          ) : tab === 'merchant' ? (
-            <TravelingMerchant
-              allCards={allCards}
-              collection={collection}
-              foilCollection={foilCollection}
-              prices={prices}
-              pricesLoading={pricesLoading}
-              merchant={merchant}
-              setMerchant={setMerchant}
-              vendorName={vendorName}
-              setVendorName={setVendorName}
-              onAdjust={adjust}
-              onAdjustFoil={adjustFoil}
-              onConsign={consign}
-              onOpenModal={setModalCard}
-            />
-          ) : tab === 'stats' ? (
-            <Stats
-              allCards={allCards}
-              collection={collection}
-              foilCollection={foilCollection}
-              prices={prices}
-              pricesLoading={pricesLoading}
-              onOpenModal={setModalCard}
-            />
-          ) : tab === 'export' ? (
-            <Export
-              allCards={allCards}
-              collection={collection}
-              foilCollection={foilCollection}
-              prices={prices}
-              pricesLoading={pricesLoading}
-              lookingFor={lookingFor}
-              upForTrade={upForTrade}
-            />
-          ) : (
-            <>
-              {/* Radiance notice — riftcodex hasn't ingested the set yet, so it
-                  can't appear as a real tab; this self-removes once it has. */}
-              {game.id === 'riftbound' && !setIds.includes('RAD') && game.features.setLogos.RAD && (
-                <div className="upcoming-set-banner">
-                  <img src={game.features.setLogos.RAD} alt="Radiance" className="upcoming-set-logo" />
-                  <span className="upcoming-set-text">
-                    <strong>Radiance</strong> launches <strong>October 23, 2026</strong> — its cards will appear here automatically once the set releases.
-                  </span>
+          {activeGroup && activeGroup.pages.length > 1 && (
+            <div className="page-subnav">
+              <SlidingTabs
+                className="sub-tabs"
+                ariaLabel={`${activeGroup.label} pages`}
+                active={tab}
+                onSelect={setTab}
+                items={activeGroup.pages.map(([id, label]) => ({
+                  id,
+                  label,
+                  badge: id === 'friends' && friends.length > 0 ? friends.length : null,
+                }))}
+              />
+            </div>
+          )}
+          <div key={tab} className="page-enter">
+            {tab === 'decks' ? (
+              <Decks
+                allCards={allCards}
+                collection={collection}
+                foilCollection={foilCollection}
+                prices={prices}
+                pricesLoading={pricesLoading}
+                decks={decks}
+                setDecks={setDecks}
+                onOpenModal={setModalCard}
+                newDeckLegend={newDeckLegend}
+                onNewDeckConsumed={consumeNewDeckLegend}
+              />
+            ) : tab === 'shopping' ? (
+              <Shopping
+                allCards={allCards}
+                collection={collection}
+                foilCollection={foilCollection}
+                prices={prices}
+                pricesLoading={pricesLoading}
+                lookingFor={lookingFor}
+                onToggleLF={toggleLF}
+                onOpenModal={setModalCard}
+              />
+            ) : tab === 'trade' ? (
+              <TradeBinder
+                allCards={allCards}
+                collection={collection}
+                foilCollection={foilCollection}
+                prices={prices}
+                pricesLoading={pricesLoading}
+                lookingFor={lookingFor}
+                upForTrade={upForTrade}
+                onToggleLF={toggleLF}
+                onToggleUFT={toggleUFT}
+                onOpenModal={setModalCard}
+              />
+            ) : tab === 'merchant' ? (
+              <TravelingMerchant
+                allCards={allCards}
+                collection={collection}
+                foilCollection={foilCollection}
+                prices={prices}
+                pricesLoading={pricesLoading}
+                merchant={merchant}
+                setMerchant={setMerchant}
+                vendorName={vendorName}
+                setVendorName={setVendorName}
+                onAdjust={adjust}
+                onAdjustFoil={adjustFoil}
+                onConsign={consign}
+                onOpenModal={setModalCard}
+              />
+            ) : tab === 'stats' ? (
+              <Stats
+                allCards={allCards}
+                collection={collection}
+                foilCollection={foilCollection}
+                prices={prices}
+                pricesLoading={pricesLoading}
+                onOpenModal={setModalCard}
+              />
+            ) : tab === 'friends' ? (
+              <Friends
+                allCards={allCards}
+                collection={collection}
+                foilCollection={foilCollection}
+                lookingFor={lookingFor}
+                upForTrade={upForTrade}
+                prices={prices}
+                pricesLoading={pricesLoading}
+                onOpenModal={setModalCard}
+                onOpenSettings={() => setTab('settings')}
+              />
+            ) : tab === 'settings' ? (
+              <Settings
+                allCards={allCards}
+                collection={collection}
+                foilCollection={foilCollection}
+                onImport={handleImport}
+              />
+            ) : tab === 'export' ? (
+              <Export
+                onImport={handleImport}
+                allCards={allCards}
+                collection={collection}
+                foilCollection={foilCollection}
+                prices={prices}
+                pricesLoading={pricesLoading}
+                lookingFor={lookingFor}
+                upForTrade={upForTrade}
+              />
+            ) : (
+              <>
+                {/* Radiance notice — riftcodex hasn't ingested the set yet, so it
+                    can't appear as a real tab; this self-removes once it has. */}
+                {game.id === 'riftbound' && !setIds.includes('RAD') && game.features.setLogos.RAD && (
+                  <div className="upcoming-set-banner">
+                    <img src={game.features.setLogos.RAD} alt="Radiance" className="upcoming-set-logo" />
+                    <span className="upcoming-set-text">
+                      <strong>Radiance</strong> launches <strong>October 23, 2026</strong> — its cards will appear here automatically once the set releases.
+                    </span>
+                  </div>
+                )}
+
+                {/* Set picker — scalable dropdown replacing the old tab strip */}
+                <div className="set-picker-row">
+                  <SetPicker
+                    entries={setPickerEntries}
+                    currentId={currentSetId}
+                    onSelect={setActiveSetId}
+                  />
                 </div>
-              )}
 
-              {/* Set picker — scalable dropdown replacing the old tab strip */}
-              <div className="set-picker-row">
-                <SetPicker
-                  entries={setPickerEntries}
-                  currentId={currentSetId}
-                  onSelect={setActiveSetId}
-                />
-              </div>
-
-              {/* Set progress */}
-              {setProgressStats && (
-                <div className="set-progress">
-                  <div className="set-progress-head">
-                    {setProgressStats.logo ? (
-                      <img className="set-logo" src={setProgressStats.logo} alt={setProgressStats.name} />
-                    ) : setProgressStats.art ? (
-                      <button
-                        className="set-cover"
-                        onClick={() => setModalCard(setProgressStats.art)}
-                        title={`${setProgressStats.name} — ${setProgressStats.art.name}`}
-                      >
-                        <img src={setProgressStats.art.media.image_url} alt="" loading="lazy" />
-                      </button>
-                    ) : null}
-                    <div className="set-progress-headings">
-                      {!setProgressStats.logo && <h2 className="set-progress-title">{setProgressStats.name}</h2>}
-                      <span className="set-progress-sub">
-                        {setProgressStats.playsets} playsets · {setProgressStats.partial} in progress · {setProgressStats.missing} missing
-                      </span>
+                {/* Set progress */}
+                {setProgressStats && (
+                  <div className="set-progress">
+                    <div className="set-progress-head">
+                      {setProgressStats.logo ? (
+                        <img className="set-logo" src={setProgressStats.logo} alt={setProgressStats.name} />
+                      ) : setProgressStats.art ? (
+                        <button
+                          className="set-cover"
+                          onClick={() => setModalCard(setProgressStats.art)}
+                          title={`${setProgressStats.name} — ${setProgressStats.art.name}`}
+                        >
+                          <img src={setProgressStats.art.media.image_url} alt="" loading="lazy" />
+                        </button>
+                      ) : null}
+                      <div className="set-progress-headings">
+                        {!setProgressStats.logo && <h2 className="set-progress-title">{setProgressStats.name}</h2>}
+                        <span className="set-progress-sub">
+                          {setProgressStats.playsets} playsets · {setProgressStats.partial} in progress · {setProgressStats.missing} missing
+                        </span>
+                      </div>
+                    </div>
+                    <div className="progress-legend">
+                      <span className="legend-item"><span className="legend-swatch" style={{background: 'var(--accent)'}}></span> Playset</span>
+                      <span className="legend-item"><span className="legend-swatch" style={{background: 'var(--accent-line)'}}></span> Partial</span>
+                      <span className="legend-item"><span className="legend-swatch" style={{background: 'var(--bg-2)'}}></span> Missing</span>
+                      {setProgressStats.value != null && (
+                        <span style={{marginLeft: 12, color: 'var(--text-0)', fontWeight: 600, fontFamily: 'var(--font-mono)', fontSize: 12}}>
+                          ${setProgressStats.value.toFixed(2)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="set-progress-bar">
+                      <span className="seg-own" style={{width: setProgressStats.pct + '%'}}></span>
+                      <span className="seg-partial" style={{width: setProgressStats.partialPct + '%'}}></span>
                     </div>
                   </div>
-                  <div className="progress-legend">
-                    <span className="legend-item"><span className="legend-swatch" style={{background: 'var(--accent)'}}></span> Playset</span>
-                    <span className="legend-item"><span className="legend-swatch" style={{background: 'var(--accent-line)'}}></span> Partial</span>
-                    <span className="legend-item"><span className="legend-swatch" style={{background: 'var(--bg-2)'}}></span> Missing</span>
-                    {setProgressStats.value != null && (
-                      <span style={{marginLeft: 12, color: 'var(--text-0)', fontWeight: 600, fontFamily: 'var(--font-mono)', fontSize: 12}}>
-                        ${setProgressStats.value.toFixed(2)}
+                )}
+
+                {/* Content toolbar */}
+                <div className="content-toolbar">
+                  <div className="active-filters">
+                    {activeChips.length > 0 ? activeChips.map(ch => (
+                      <span key={ch.k} className="active-filter-pill">
+                        {ch.label}
+                        <button className="x-btn" onClick={ch.clear}>×</button>
                       </span>
+                    )) : (
+                      <span style={{fontSize: 12, color: 'var(--text-3)'}}>No filters applied</span>
                     )}
                   </div>
-                  <div className="set-progress-bar">
-                    <span className="seg-own" style={{width: setProgressStats.pct + '%'}}></span>
-                    <span className="seg-partial" style={{width: setProgressStats.partialPct + '%'}}></span>
+                  <div className="view-toggle">
+                    <button className={view === 'grid' ? 'active' : ''} title="Grid view" onClick={() => setView('grid')}><GridIcon /></button>
+                    <button className={view === 'list' ? 'active' : ''} title="List view" onClick={() => setView('list')}><RowsIcon /></button>
                   </div>
                 </div>
-              )}
 
-              {/* Content toolbar */}
-              <div className="content-toolbar">
-                <div className="active-filters">
-                  {activeChips.length > 0 ? activeChips.map(ch => (
-                    <span key={ch.k} className="active-filter-pill">
-                      {ch.label}
-                      <button className="x-btn" onClick={ch.clear}>×</button>
-                    </span>
-                  )) : (
-                    <span style={{fontSize: 12, color: 'var(--text-3)'}}>No filters applied</span>
-                  )}
-                </div>
-                <div className="view-toggle">
-                  <button className={view === 'grid' ? 'active' : ''} title="Grid view" onClick={() => setView('grid')}><GridIcon /></button>
-                  <button className={view === 'list' ? 'active' : ''} title="List view" onClick={() => setView('list')}><RowsIcon /></button>
-                </div>
-              </div>
-
-              {/* Cards */}
-              {currentSetId === 'runes' ? (
-                <RuneBox
-                  allRuneCards={allRuneCards}
-                  collection={collection}
-                  foilCollection={foilCollection}
-                  prices={prices}
-                  pricesLoading={pricesLoading}
-                  onAdjust={adjust}
-                  onAdjustFoil={adjustFoil}
-                  onOpenModal={setModalCard}
-                  lookingFor={lookingFor}
-                  upForTrade={upForTrade}
-                  onToggleLF={toggleLF}
-                  onToggleUFT={toggleUFT}
-                  onConsign={consign}
-                />
-              ) : currentSetId === 'promos' ? (
-                <PromoBox
-                  allPromoCards={allPromoCards}
-                  collection={collection}
-                  foilCollection={foilCollection}
-                  prices={prices}
-                  pricesLoading={pricesLoading}
-                  onAdjust={adjust}
-                  onAdjustFoil={adjustFoil}
-                  onOpenModal={setModalCard}
-                  lookingFor={lookingFor}
-                  upForTrade={upForTrade}
-                  onToggleLF={toggleLF}
-                  onToggleUFT={toggleUFT}
-                  onConsign={consign}
-                />
-              ) : currentSetId ? (
-                view === 'list' ? (
-                  <div className="card-list">
-                    <div className="list-row list-head">
-                      <span>#</span>
-                      <span></span>
-                      <span>Name</span>
-                      <span>Type · {game.faction.label}</span>
-                      <span>Price</span>
-                      <span>Qty</span>
-                    </div>
-                    {cardsBySet[currentSetId].cards.map(card => (
-                      <ListRow
-                        key={card.id}
-                        card={card}
-                        count={collection[card.id] ?? 0}
-                        foilCount={foilCollection[card.id] ?? 0}
-                        price={prices[card.tcgplayer_id] ?? null}
-                        pricesLoading={pricesLoading}
-                        onAdjust={adjust}
-                        onAdjustFoil={adjustFoil}
-                        onConsign={consign}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <SetSection
-                    key={currentSetId}
-                    setName={cardsBySet[currentSetId].label}
-                    promo={cardsBySet[currentSetId].promo}
-                    cards={cardsBySet[currentSetId].cards}
+                {/* Cards */}
+                {currentSetId === 'runes' ? (
+                  <RuneBox
+                    allRuneCards={allRuneCards}
                     collection={collection}
                     foilCollection={foilCollection}
                     prices={prices}
@@ -804,15 +883,76 @@ function GameApp({ game, onSwitchGame }) {
                     onToggleLF={toggleLF}
                     onToggleUFT={toggleUFT}
                     onConsign={consign}
-                    promoByName={promoByName}
-                    promoShortLabels={game.promoShortLabels}
                   />
-                )
-              ) : (
-                <div className="status-placeholder">No cards match your filters.</div>
-              )}
-            </>
-          )}
+                ) : currentSetId === 'promos' ? (
+                  <PromoBox
+                    allPromoCards={allPromoCards}
+                    collection={collection}
+                    foilCollection={foilCollection}
+                    prices={prices}
+                    pricesLoading={pricesLoading}
+                    onAdjust={adjust}
+                    onAdjustFoil={adjustFoil}
+                    onOpenModal={setModalCard}
+                    lookingFor={lookingFor}
+                    upForTrade={upForTrade}
+                    onToggleLF={toggleLF}
+                    onToggleUFT={toggleUFT}
+                    onConsign={consign}
+                  />
+                ) : currentSetId ? (
+                  view === 'list' ? (
+                    <div className="card-list">
+                      <div className="list-row list-head">
+                        <span>#</span>
+                        <span></span>
+                        <span>Name</span>
+                        <span>Type · {game.faction.label}</span>
+                        <span>Price</span>
+                        <span>Qty</span>
+                      </div>
+                      {cardsBySet[currentSetId].cards.map(card => (
+                        <ListRow
+                          key={card.id}
+                          card={card}
+                          count={collection[card.id] ?? 0}
+                          foilCount={foilCollection[card.id] ?? 0}
+                          price={prices[card.tcgplayer_id] ?? null}
+                          pricesLoading={pricesLoading}
+                          onAdjust={adjust}
+                          onAdjustFoil={adjustFoil}
+                          onConsign={consign}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <SetSection
+                      key={currentSetId}
+                      setName={cardsBySet[currentSetId].label}
+                      promo={cardsBySet[currentSetId].promo}
+                      cards={cardsBySet[currentSetId].cards}
+                      collection={collection}
+                      foilCollection={foilCollection}
+                      prices={prices}
+                      pricesLoading={pricesLoading}
+                      onAdjust={adjust}
+                      onAdjustFoil={adjustFoil}
+                      onOpenModal={setModalCard}
+                      lookingFor={lookingFor}
+                      upForTrade={upForTrade}
+                      onToggleLF={toggleLF}
+                      onToggleUFT={toggleUFT}
+                      onConsign={consign}
+                      promoByName={promoByName}
+                      promoShortLabels={game.promoShortLabels}
+                    />
+                  )
+                ) : (
+                  <div className="status-placeholder">No cards match your filters.</div>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -822,6 +962,7 @@ function GameApp({ game, onSwitchGame }) {
         pricesLoading={pricesLoading}
         onClose={() => setModalCard(null)}
         onStartDeck={startDeckWithLegend}
+        friendOwners={modalFriendOwners}
       />
 
       <UpdateToast />

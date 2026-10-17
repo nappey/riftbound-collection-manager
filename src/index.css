@@ -1,20 +1,12 @@
 :root {
-  --bg-0: oklch(0.150 0.020 282);
-  --bg-1: oklch(0.183 0.024 282);
-  --bg-2: oklch(0.215 0.028 282);
-  --bg-3: oklch(0.248 0.032 282);
-
-  --border-0: oklch(0.275 0.034 282);
-  --border-1: oklch(0.330 0.042 282);
-
-  --text-0: oklch(0.96 0.010 282);
-  --text-1: oklch(0.79 0.016 282);
-  --text-2: oklch(0.60 0.022 282);
-  --text-3: oklch(0.48 0.026 282);
-
+  /* ── Theme inputs ── each theme (src/themes.js, [data-theme] below) sets
+     these; every surface/text/accent token is derived from them. */
+  --th-hue: 282;          /* tint of backgrounds, borders and text */
+  --th-chroma: 1;         /* how strongly the tint shows */
   --accent: oklch(0.72 0.15 282);
-  --accent-soft: oklch(0.72 0.15 282 / 0.14);
-  --accent-line: oklch(0.72 0.15 282 / 0.35);
+  --accent-2: oklch(0.66 0.16 258);   /* gradient partner */
+  --ambient: oklch(0.66 0.16 200);    /* second background glow */
+  --on-accent: #fff;                  /* text on solid accent */
 
   --ok: oklch(0.74 0.14 155);
   --warn: oklch(0.78 0.14 80);
@@ -56,7 +48,39 @@
   --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', monospace;
 
   --header-h: 56px;
-  --subnav-h: 44px;
+  --subnav-h: 60px;
+}
+
+/* ── Riftbound themes ── one per domain, plus Rift (the original violet). */
+[data-theme="rift"]  { --th-hue: 282; --th-chroma: 1;   --accent: oklch(0.72 0.15 282); --accent-2: oklch(0.66 0.16 258); --ambient: oklch(0.66 0.16 200); --on-accent: #fff; }
+[data-theme="fury"]  { --th-hue: 25;  --th-chroma: 1.05; --accent: oklch(0.68 0.19 28);  --accent-2: oklch(0.76 0.16 58);  --ambient: oklch(0.62 0.20 40); --on-accent: #fff; }
+[data-theme="calm"]  { --th-hue: 168; --th-chroma: 0.95; --accent: oklch(0.75 0.14 158); --accent-2: oklch(0.74 0.11 195); --ambient: oklch(0.70 0.12 185); --on-accent: oklch(0.18 0.03 168); }
+[data-theme="mind"]  { --th-hue: 252; --th-chroma: 1.15; --accent: oklch(0.71 0.15 250); --accent-2: oklch(0.80 0.12 215); --ambient: oklch(0.70 0.14 225); --on-accent: #fff; }
+[data-theme="body"]  { --th-hue: 48;  --th-chroma: 0.95; --accent: oklch(0.77 0.15 60);  --accent-2: oklch(0.82 0.14 82);  --ambient: oklch(0.70 0.15 40);  --on-accent: oklch(0.20 0.03 50); }
+[data-theme="chaos"] { --th-hue: 312; --th-chroma: 1.15; --accent: oklch(0.68 0.19 312); --accent-2: oklch(0.67 0.20 345); --ambient: oklch(0.60 0.20 330); --on-accent: #fff; }
+[data-theme="order"] { --th-hue: 88;  --th-chroma: 0.7;  --accent: oklch(0.84 0.14 92);  --accent-2: oklch(0.78 0.13 70);  --ambient: oklch(0.80 0.12 95);  --on-accent: oklch(0.20 0.03 85); }
+
+/* Derived tokens — also on any [data-theme] element so a theme preview can
+   render in its own colors inside another theme. */
+:root, [data-theme] {
+  --bg-0: oklch(0.150 calc(0.020 * var(--th-chroma)) var(--th-hue));
+  --bg-1: oklch(0.183 calc(0.024 * var(--th-chroma)) var(--th-hue));
+  --bg-2: oklch(0.215 calc(0.028 * var(--th-chroma)) var(--th-hue));
+  --bg-3: oklch(0.248 calc(0.032 * var(--th-chroma)) var(--th-hue));
+
+  --border-0: oklch(0.275 calc(0.034 * var(--th-chroma)) var(--th-hue));
+  --border-1: oklch(0.330 calc(0.042 * var(--th-chroma)) var(--th-hue));
+
+  --text-0: oklch(0.96 calc(0.010 * var(--th-chroma)) var(--th-hue));
+  --text-1: oklch(0.79 calc(0.016 * var(--th-chroma)) var(--th-hue));
+  --text-2: oklch(0.60 calc(0.022 * var(--th-chroma)) var(--th-hue));
+  --text-3: oklch(0.48 calc(0.026 * var(--th-chroma)) var(--th-hue));
+
+  --accent-soft: color-mix(in oklch, var(--accent) 14%, transparent);
+  --accent-line: color-mix(in oklch, var(--accent) 35%, transparent);
+  --accent-glow: color-mix(in oklch, var(--accent) 30%, transparent);
+  --accent-hi: color-mix(in oklch, var(--accent) 80%, white);
+  --accent-2-hi: color-mix(in oklch, var(--accent-2) 80%, white);
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -64,8 +88,8 @@
 html, body {
   margin: 0;
   background:
-    radial-gradient(1200px 600px at 15% -10%, oklch(0.72 0.15 282 / 0.10), transparent 60%),
-    radial-gradient(1000px 700px at 100% 0%, oklch(0.66 0.16 200 / 0.07), transparent 55%),
+    radial-gradient(1200px 600px at 15% -10%, color-mix(in oklch, var(--accent) 10%, transparent), transparent 60%),
+    radial-gradient(1000px 700px at 100% 0%, color-mix(in oklch, var(--ambient) 8%, transparent), transparent 55%),
     var(--bg-0);
   background-attachment: fixed;
   color: var(--text-0);
@@ -85,3 +109,30 @@ input, select, textarea { font-family: inherit; }
 ::-webkit-scrollbar-thumb:hover { background: var(--border-1); }
 
 #root { min-height: 100vh; }
+
+/* ── Theme backdrop (components/ThemeBackdrop.jsx) ── */
+.theme-backdrop { position: fixed; inset: 0 0 auto 0; height: 620px; pointer-events: none; z-index: 0; overflow: hidden; }
+.theme-lattice {
+  position: absolute; inset: 0;
+  background-image:
+    repeating-linear-gradient(60deg, color-mix(in oklch, var(--accent) 9%, transparent) 0 1px, transparent 1px 34px),
+    repeating-linear-gradient(-60deg, color-mix(in oklch, var(--accent) 9%, transparent) 0 1px, transparent 1px 34px);
+  -webkit-mask-image: radial-gradient(70% 90% at 92% 0%, black, transparent 70%);
+  mask-image: radial-gradient(70% 90% at 92% 0%, black, transparent 70%);
+  opacity: 0.55;
+}
+.theme-art {
+  position: absolute; top: -170px; right: -40px; width: 720px; height: 720px;
+  background: var(--theme-art, none) center 40% / 130% no-repeat;
+  -webkit-mask-image: radial-gradient(closest-side, black 25%, transparent 100%);
+  mask-image: radial-gradient(closest-side, black 25%, transparent 100%);
+  opacity: 0.2; filter: saturate(1.15);
+}
+.theme-sigil {
+  position: absolute; top: -150px; right: 40px; width: 560px; height: 560px;
+  color: var(--accent); opacity: 0.07;
+  animation: sigil-turn 360s linear infinite;
+}
+[data-theme="rift"] .theme-sigil { opacity: 0.14; }
+@keyframes sigil-turn { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .theme-sigil { animation: none; } }

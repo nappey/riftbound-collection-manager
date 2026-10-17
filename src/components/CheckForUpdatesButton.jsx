@@ -22,6 +22,7 @@ export default function CheckForUpdatesButton() {
       switch (p?.state) {
         case 'checking': setBusy(true); setLabel('Checking…'); break;
         case 'none': setBusy(false); flash('Up to date'); break;
+        case 'available': setBusy(false); flash('Update found'); break;
         case 'downloading': setBusy(false); flash('Update found — downloading'); break;
         case 'ready': setBusy(false); setLabel(null); break;
         case 'error': setBusy(false); flash('Update check failed'); break;
