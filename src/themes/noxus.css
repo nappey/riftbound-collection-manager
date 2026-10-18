@@ -1,0 +1,224 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   Noxus — the Empire. Crimson and black iron with gold trim: a war-red sky
+   over a panorama of League of Legends splash art (Darius, Swain, Ambessa,
+   Katarina), a swaying war banner carrying Riftbound champions, a fortress
+   line of iron spikes, embers on the wind, and Roman-inscription capitals
+   (Cinzel). UI is hard and angular: parallelogram tab plates, decisive
+   motion, crimson edges.
+
+   Scoped to [data-theme="noxus"]; loads after the other stylesheets so its
+   tokens win. Ember sparks on click and parallax live in themeFx.js.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+[data-theme="noxus"] {
+  color-scheme: dark;
+
+  --nx-crimson: #d42a3c;
+  --nx-blood: #8e1424;
+  --nx-gold: #c9a24a;
+  --nx-ember: #ff6a2a;
+  --nx-iron: #1a1416;
+  --nx-display: 'Cinzel', var(--font-sans);
+
+  --th-hue: 20;
+  --th-chroma: 0.6;
+  --accent: var(--nx-crimson);
+  --accent-2: var(--nx-gold);
+  --ambient: var(--nx-ember);
+  --on-accent: #fff;
+
+  --bg-0: #0c0809;
+  --bg-1: #151012;
+  --bg-2: #1c1517;
+  --bg-3: #261c1f;
+  --border-0: #33262a;
+  --border-1: #5a3a3f;
+  --text-0: #f1e6e3;
+  --text-1: #c9b8b4;
+  --text-2: #988783;
+  --text-3: #6e605d;
+
+  --accent-soft: color-mix(in srgb, var(--nx-crimson) 15%, transparent);
+  --accent-line: color-mix(in srgb, var(--nx-crimson) 55%, transparent);
+  --accent-glow: color-mix(in srgb, var(--nx-crimson) 35%, transparent);
+  --accent-hi: #e8495a;
+  --accent-2-hi: #e0bd6a;
+
+  --radius-sm: 1px;
+  --radius-md: 2px;
+  --radius-lg: 3px;
+  --radius-xl: 4px;
+}
+
+/* ── War-red sky ── */
+html[data-theme="noxus"],
+html[data-theme="noxus"] body {
+  background:
+    radial-gradient(1200px 520px at 50% -10%, color-mix(in srgb, var(--nx-crimson) 22%, transparent), transparent 70%),
+    radial-gradient(800px 500px at 0% 100%, color-mix(in srgb, var(--nx-ember) 8%, transparent), transparent 70%),
+    var(--bg-0);
+}
+[data-theme="noxus"] ::selection { background: var(--nx-crimson); color: #fff; }
+[data-theme="noxus"] ::-webkit-scrollbar-thumb { background: var(--nx-blood); }
+
+/* ── Backdrop ── */
+[data-theme="noxus"] .theme-backdrop { height: 100vh; }
+[data-theme="noxus"] :is(.theme-lattice, .theme-art, .theme-sigil) { display: none; }
+.noxus-layer { display: none; }
+[data-theme="noxus"] .noxus-layer { display: block; position: absolute; inset: 0; overflow: hidden; }
+
+/* splash panorama: four slides on a 48s loop, slow pan, crimson grade */
+.n-panorama {
+  position: absolute; top: 0; left: 0; right: 0; height: 560px;
+  translate: calc(var(--mx, 0) * -10px) 0; transition: translate 1.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  -webkit-mask-image: linear-gradient(180deg, black 30%, transparent 100%);
+  mask-image: linear-gradient(180deg, black 30%, transparent 100%);
+}
+.n-pano-slide {
+  position: absolute; inset: 0 -40px; background: center 22% / cover no-repeat;
+  opacity: 0; filter: saturate(0.85) contrast(1.1);
+  animation: n-pano 48s linear infinite;
+}
+@keyframes n-pano {
+  0% { opacity: 0; transform: translateX(-20px); }
+  4%, 25% { opacity: 0.3; }
+  30% { opacity: 0; transform: translateX(20px); }
+  100% { opacity: 0; transform: translateX(20px); }
+}
+.n-pano-tint { position: absolute; inset: 0; background: linear-gradient(180deg, color-mix(in srgb, var(--nx-blood) 55%, transparent), transparent 80%); mix-blend-mode: multiply; }
+
+/* fortress line of iron spikes */
+.n-spikes { position: absolute; left: 0; bottom: 0; width: 100%; height: 150px; fill: #170f11; translate: calc(var(--mx, 0) * 6px) 0; transition: translate 1s; }
+.n-spikes path:nth-child(3n) { fill: #22171a; }
+
+/* war banners */
+.n-banner { position: absolute; transform-origin: 50% 0; animation: n-sway 7s ease-in-out infinite alternate; }
+.n-banner-main { top: 150px; right: 56px; width: 236px; --depth: 8; translate: calc(var(--mx, 0) * 8px) 0; transition: translate 1s; }
+.n-banner-small { bottom: 150px; left: 34px; width: 92px; animation-duration: 8.5s; animation-delay: -3s; }
+.n-rod { position: relative; height: 10px; margin: 0 -18px; background: linear-gradient(180deg, #4a3c3e, #1a1214); border-radius: 5px; box-shadow: 0 3px 6px oklch(0 0 0 / 0.6); }
+.n-rod i { position: absolute; top: -5px; width: 14px; height: 20px; background: var(--nx-gold); clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+.n-rod i:first-child { left: -6px; }
+.n-rod i:last-child { right: -6px; }
+.n-cloth {
+  position: relative; margin-top: -2px;
+  background: linear-gradient(180deg, #9c1729, #6d0f1c);
+  border-left: 3px solid var(--nx-gold); border-right: 3px solid var(--nx-gold);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 46px), 0 100%);
+  padding: 14px 14px 66px;
+  box-shadow: inset 0 0 40px oklch(0 0 0 / 0.45);
+}
+.n-banner-small .n-cloth { padding: 18px 10px 54px; clip-path: polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 30px), 0 100%); }
+@keyframes n-sway { from { transform: rotate(-1.2deg); } to { transform: rotate(1.2deg); } }
+
+.n-portrait { position: relative; aspect-ratio: 420 / 430; border: 2px solid var(--nx-gold); background: var(--nx-iron); overflow: hidden; }
+.n-slide { position: absolute; inset: 0; margin: 0; opacity: 0; animation: n-slide 48s linear infinite; }
+.n-slide-img { position: absolute; inset: 0 0 46px; background: center 20% / cover no-repeat; }
+.n-slide figcaption {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 46px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: var(--nx-iron); border-top: 2px solid var(--nx-gold);
+}
+.n-slide figcaption b { font-family: var(--nx-display); font-weight: 700; font-size: 16px; letter-spacing: 0.12em; color: var(--nx-gold); text-transform: uppercase; }
+.n-slide figcaption span { font-size: 9.5px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--text-2); }
+@keyframes n-slide { 0% { opacity: 0; } 4%, 23% { opacity: 1; } 27%, 100% { opacity: 0; } }
+.n-emblem { display: block; width: 100%; fill: var(--nx-gold); filter: drop-shadow(0 2px 0 oklch(0 0 0 / 0.5)); }
+
+/* embers rising */
+.n-embers span {
+  position: absolute; bottom: -10px; border-radius: 50%;
+  background: var(--nx-ember); box-shadow: 0 0 6px var(--nx-ember), 0 0 12px color-mix(in srgb, var(--nx-ember) 60%, transparent);
+  animation: n-ember linear infinite;
+}
+.n-embers span:nth-child(3n) { background: #ffd27a; box-shadow: 0 0 6px #ffb347; }
+@keyframes n-ember {
+  0% { transform: translate(0, 0); opacity: 0; }
+  10% { opacity: 1; }
+  40% { transform: translate(18px, -35vh); }
+  70% { transform: translate(-12px, -65vh); opacity: 0.8; }
+  100% { transform: translate(10px, -95vh); opacity: 0; }
+}
+
+/* the card grid gets a dark veil so the war doesn't compete */
+[data-theme="noxus"] .main:not(.no-sidebar) { background: color-mix(in srgb, var(--bg-0) 84%, transparent); }
+
+/* ── Imperial capitals (Cinzel) ── */
+[data-theme="noxus"] .brand-name { font-family: var(--nx-display); font-weight: 700; font-size: 15px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-0); }
+[data-theme="noxus"] .brand-name .muted { color: var(--nx-crimson); }
+[data-theme="noxus"] .content :is(h1, .settings-card > h2, .trade-col-head h2, .export-options > h2) {
+  font-family: var(--nx-display); font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--nx-gold);
+}
+[data-theme="noxus"] .content h1 { font-size: 26px; }
+[data-theme="noxus"] .content :is(.settings-card > h2, .trade-col-head h2, .export-options > h2) { font-size: 16px; }
+
+/* ── Header ── */
+[data-theme="noxus"] .app-header {
+  background: linear-gradient(180deg, #120c0d, color-mix(in srgb, var(--bg-0) 90%, transparent));
+  border-bottom: 2px solid var(--nx-crimson);
+  box-shadow: 0 1px 0 var(--nx-gold), 0 8px 24px oklch(0 0 0 / 0.5);
+}
+[data-theme="noxus"] .brand-mark { border-color: var(--nx-gold); border-radius: 1px; background: var(--nx-blood); }
+[data-theme="noxus"] .brand-mark::before { background: var(--nx-gold); }
+
+/* ── Iron and crimson controls ── */
+[data-theme="noxus"] .btn { border-radius: 2px; border-color: var(--border-1); transition: border-color 0.15s, background 0.15s, color 0.15s; }
+[data-theme="noxus"] .btn:hover:not(:disabled) { border-color: var(--nx-crimson); color: #fff; background: color-mix(in srgb, var(--nx-crimson) 18%, var(--bg-2)); }
+[data-theme="noxus"] :is(.btn.primary, .seg button.active) {
+  background: linear-gradient(180deg, #e0394a, var(--nx-blood)); color: #fff; border-color: var(--nx-blood);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--nx-gold) 70%, transparent);
+}
+[data-theme="noxus"] .seg { border-radius: 2px; }
+
+/* ── Dock: angular iron plates; a crimson parallelogram strikes between tabs ── */
+[data-theme="noxus"] :is(.nav-dock, .stats-row) {
+  border-radius: 2px; border: 1px solid var(--border-1); border-top: 2px solid var(--nx-crimson);
+  background: color-mix(in srgb, var(--bg-1) 88%, transparent);
+  box-shadow: 0 12px 30px oklch(0 0 0 / 0.6), inset 0 1px 0 color-mix(in srgb, var(--nx-gold) 25%, transparent);
+}
+[data-theme="noxus"] .nav-dock .sliding-tabs-glider {
+  border: none; border-radius: 0;
+  clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+  background: linear-gradient(180deg, #e0394a, var(--nx-blood));
+  box-shadow: none;
+}
+[data-theme="noxus"] .nav-dock .sliding-tabs-glider[data-ready] {
+  transition: transform 0.32s cubic-bezier(0.7, 0, 0.2, 1), width 0.32s cubic-bezier(0.7, 0, 0.2, 1);
+}
+[data-theme="noxus"] .nav-dock .sliding-tabs-glider::after { content: none; }
+[data-theme="noxus"] .nav-dock .sliding-tab { font-weight: 600; letter-spacing: 0.02em; border-radius: 0; }
+[data-theme="noxus"] .nav-dock .sliding-tab:hover { background: transparent; color: #fff; }
+[data-theme="noxus"] .nav-dock .sliding-tab[data-active="true"],
+[data-theme="noxus"] .nav-dock .sliding-tab[data-active="true"] .tab-icon { color: #fff; filter: none; }
+[data-theme="noxus"] .nav-dock .sliding-tab[data-active="true"] .tab-icon { animation: none; }
+[data-theme="noxus"] .nav-dock .sliding-tab[data-active="true"] .sliding-tab-badge { background: var(--nx-iron); color: var(--nx-gold); }
+[data-theme="noxus"] .sub-tabs { border-radius: 2px; }
+[data-theme="noxus"] .sub-tabs .sliding-tabs-glider {
+  border-radius: 0; clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%);
+  background: color-mix(in srgb, var(--nx-crimson) 35%, var(--bg-2)); border: none; box-shadow: none;
+}
+[data-theme="noxus"] .sub-tabs .sliding-tabs-glider[data-ready] { transition: transform 0.3s cubic-bezier(0.7, 0, 0.2, 1), width 0.3s cubic-bezier(0.7, 0, 0.2, 1); }
+[data-theme="noxus"] .sub-tabs .sliding-tab[data-active="true"] { color: #fff; }
+[data-theme="noxus"] .stat + .stat { border-left-color: var(--border-1); }
+[data-theme="noxus"] .stat--complete .stat-value { color: var(--nx-gold); }
+[data-theme="noxus"] .stat-meter > span { background: var(--nx-crimson); box-shadow: 0 0 6px var(--nx-crimson); }
+
+/* ── Page entrance: a short, decisive strike ── */
+[data-theme="noxus"] .page-enter { animation: n-strike 0.28s cubic-bezier(0.7, 0, 0.2, 1); }
+@keyframes n-strike { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
+
+/* ── Panels and cards: iron with a crimson edge ── */
+[data-theme="noxus"] :is(.settings-card, .trade-col, .export-options) {
+  border-radius: 2px; border-color: var(--border-1); border-top: 2px solid var(--nx-crimson);
+  background: var(--bg-1);
+  box-shadow: 0 14px 34px oklch(0 0 0 / 0.5);
+}
+[data-theme="noxus"] .card-cell { border-color: var(--border-0); transition: transform 0.18s ease, border-color 0.18s, box-shadow 0.18s; }
+[data-theme="noxus"] .card-cell:hover { transform: translateY(-3px); border-color: var(--nx-crimson); box-shadow: 0 14px 30px oklch(0 0 0 / 0.6), 0 0 18px color-mix(in srgb, var(--nx-crimson) 25%, transparent); }
+[data-theme="noxus"] .card-cell.s-playset { border-color: color-mix(in srgb, var(--nx-gold) 55%, transparent); }
+[data-theme="noxus"] .card-modal { border-radius: 2px; border-top: 3px solid var(--nx-crimson); box-shadow: 0 30px 80px oklch(0 0 0 / 0.75); }
+[data-theme="noxus"] .sync-pill { border-radius: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  :is(.n-pano-slide, .n-banner, .n-slide, .n-embers span), [data-theme="noxus"] .page-enter { animation: none !important; }
+  .n-pano-slide:first-child { opacity: 0.3; }
+  .n-slide:first-child { opacity: 1; }
+}

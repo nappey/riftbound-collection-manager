@@ -1,0 +1,259 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   Zaun — the Undercity. Arcane lights Zaun in sickly neon greens, purples
+   and pinks cutting through smog and shadow, with Art Nouveau's long
+   organic curves and a punk streak; magic comes "through chemicals". So:
+   smog-black surfaces, chemtech green / Shimmer purple / Jinx pink neon
+   that glows and flickers, organic asymmetric corners, graffiti headings
+   (Rubik Wet Paint), glitchy transitions, and Riftbound champion art from
+   Zaun (Jinx, Vi, Ekko, Viktor) cross-fading in the backdrop.
+
+   Scoped to [data-theme="zaun"]; loads after the other stylesheets so its
+   tokens win. Click splashes and parallax live in themeFx.js.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+[data-theme="zaun"] {
+  color-scheme: dark;
+
+  --z-green: #3df58a;   /* chemtech */
+  --z-purple: #b14bff;  /* Shimmer */
+  --z-pink: #ff3fa4;    /* Jinx */
+  --z-cyan: #3ee6f0;
+  --z-smog: #090d0b;
+  --z-display: 'Rubik Wet Paint', var(--font-sans);
+
+  --th-hue: 160;
+  --th-chroma: 0.7;
+  --accent: var(--z-green);
+  --accent-2: var(--z-purple);
+  --ambient: var(--z-pink);
+  --on-accent: #06110b;
+
+  --bg-0: var(--z-smog);
+  --bg-1: #0f1513;
+  --bg-2: #151d1a;
+  --bg-3: #1d2723;
+  --border-0: #24302b;
+  --border-1: #3a5046;
+  --text-0: #e6f2ea;
+  --text-1: #b9cbbf;
+  --text-2: #82978a;
+  --text-3: #5f7268;
+
+  --accent-soft: color-mix(in srgb, var(--z-green) 13%, transparent);
+  --accent-line: color-mix(in srgb, var(--z-green) 45%, transparent);
+  --accent-glow: color-mix(in srgb, var(--z-green) 45%, transparent);
+  --accent-hi: #7dffb4;
+  --accent-2-hi: #c983ff;
+
+  /* Art Nouveau: organic, asymmetric corners */
+  --radius-lg: 14px 4px 14px 4px;
+  --radius-xl: 20px 6px 20px 6px;
+}
+
+/* ── Smoggy page background ── */
+html[data-theme="zaun"],
+html[data-theme="zaun"] body {
+  background:
+    radial-gradient(900px 600px at 0% 100%, color-mix(in srgb, var(--z-green) 9%, transparent), transparent 60%),
+    radial-gradient(900px 700px at 100% 0%, color-mix(in srgb, var(--z-purple) 12%, transparent), transparent 60%),
+    var(--z-smog);
+}
+[data-theme="zaun"] ::selection { background: var(--z-pink); color: #fff; }
+[data-theme="zaun"] ::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--z-purple) 55%, var(--bg-2)); }
+
+/* ── Backdrop: hide the other themes' layers, show Zaun's ── */
+[data-theme="zaun"] .theme-backdrop { height: 100vh; }
+[data-theme="zaun"] :is(.theme-lattice, .theme-art, .theme-sigil) { display: none; }
+.zaun-layer { display: none; }
+[data-theme="zaun"] .zaun-layer { display: block; position: absolute; inset: 0; overflow: hidden; }
+
+/* drifting smog */
+.z-smog { position: absolute; border-radius: 50%; filter: blur(70px); opacity: 0.5; animation: z-drift 26s ease-in-out infinite alternate; }
+.z-smog-a { width: 620px; height: 420px; left: -120px; bottom: -120px; background: color-mix(in srgb, var(--z-green) 30%, transparent); }
+.z-smog-b { width: 560px; height: 460px; right: 10%; top: -160px; background: color-mix(in srgb, var(--z-purple) 32%, transparent); animation-duration: 32s; animation-delay: -8s; }
+.z-smog-c { width: 460px; height: 320px; left: 40%; top: 40%; background: color-mix(in srgb, var(--z-pink) 16%, transparent); animation-duration: 38s; animation-delay: -14s; }
+@keyframes z-drift {
+  from { transform: translate(-40px, 20px) scale(1); }
+  to { transform: translate(60px, -30px) scale(1.15); }
+}
+
+/* champion art: four slides cross-fading on a 48s loop, slow push-in */
+.z-art {
+  position: absolute; top: 40px; right: -40px; width: 780px; height: 560px;
+  translate: calc(var(--mx, 0) * -14px) calc(var(--my, 0) * -10px);
+  transition: translate 1.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  -webkit-mask-image: radial-gradient(closest-side, black 35%, transparent 100%);
+  mask-image: radial-gradient(closest-side, black 35%, transparent 100%);
+}
+.z-art-slide {
+  position: absolute; inset: 0; background: center 30% / cover no-repeat;
+  opacity: 0; filter: saturate(1.2) contrast(1.05);
+  animation: z-slide 48s linear infinite;
+}
+@keyframes z-slide {
+  0% { opacity: 0; transform: scale(1.08); }
+  4% { opacity: 0.34; }
+  25% { opacity: 0.34; }
+  30% { opacity: 0; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1); }
+}
+.z-art-tint {
+  position: absolute; inset: 0; mix-blend-mode: color; opacity: 0.35;
+  background: linear-gradient(135deg, var(--z-green), var(--z-purple) 55%, var(--z-pink));
+}
+
+/* Art Nouveau pipes with neon fluid running up them */
+.z-pipes { position: absolute; left: -30px; top: 0; width: 120px; height: 100%; opacity: 0.75; translate: calc(var(--mx, 0) * 8px) 0; transition: translate 1s; }
+.z-pipe { stroke: #1a2420; stroke-width: 16; }
+.z-pipe.thin { stroke-width: 9; }
+.z-flow {
+  stroke: var(--z-green); stroke-width: 3; stroke-dasharray: 18 26;
+  filter: drop-shadow(0 0 4px var(--z-green));
+  animation: z-flow 2.4s linear infinite;
+}
+.z-flow.thin { stroke: var(--z-purple); stroke-width: 2; filter: drop-shadow(0 0 4px var(--z-purple)); animation-duration: 1.8s; }
+@keyframes z-flow { to { stroke-dashoffset: -88; } }
+
+/* graffiti that sprays itself on, fades, and comes back */
+.z-graffiti { position: absolute; left: 30%; bottom: 4%; width: 300px; height: 200px; opacity: 0.8; translate: calc(var(--mx, 0) * 18px) calc(var(--my, 0) * 10px); transition: translate 1s; }
+.z-spray { stroke-width: 7; stroke-dasharray: 1; stroke-dashoffset: 1; animation: z-spray 16s ease-in-out infinite; }
+.z-spray.pink { stroke: var(--z-pink); filter: drop-shadow(0 0 5px var(--z-pink)); }
+.z-spray.cyan { stroke: var(--z-cyan); filter: drop-shadow(0 0 5px var(--z-cyan)); animation-delay: 0.6s; }
+.z-spray.green { stroke: var(--z-green); filter: drop-shadow(0 0 5px var(--z-green)); animation-delay: 1.2s; }
+.z-spray:nth-child(3) { animation-delay: 0.3s; }
+@keyframes z-spray {
+  0% { stroke-dashoffset: 1; opacity: 1; }
+  10%, 80% { stroke-dashoffset: 0; opacity: 1; }
+  92%, 100% { stroke-dashoffset: 0; opacity: 0; }
+}
+
+/* chem bubbles rising */
+.z-bubbles span {
+  position: absolute; bottom: -20px; border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, var(--z-green) 80%, transparent);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--z-green) 60%, transparent), inset 0 0 4px color-mix(in srgb, var(--z-green) 40%, transparent);
+  animation: z-rise linear infinite;
+}
+.z-bubbles span:nth-child(3n) { border-color: color-mix(in srgb, var(--z-purple) 85%, transparent); box-shadow: 0 0 6px var(--z-purple); }
+@keyframes z-rise {
+  0% { transform: translate(0, 0); opacity: 0; }
+  10% { opacity: 0.9; }
+  50% { transform: translate(14px, -50vh); }
+  90% { opacity: 0.7; }
+  100% { transform: translate(-10px, -100vh); opacity: 0; }
+}
+
+/* The card grid gets a smog veil so the backdrop doesn't compete. */
+[data-theme="zaun"] .main:not(.no-sidebar) { background: color-mix(in srgb, var(--z-smog) 80%, transparent); }
+
+/* ── Graffiti headings ── */
+[data-theme="zaun"] .brand-name { font-family: var(--z-display); font-weight: 400; font-size: 17px; letter-spacing: 0.02em; color: var(--z-green); text-shadow: 0 0 10px var(--accent-glow); }
+[data-theme="zaun"] .brand-name .muted { color: var(--z-pink); text-shadow: 0 0 10px color-mix(in srgb, var(--z-pink) 50%, transparent); }
+[data-theme="zaun"] .content :is(h1, .settings-card > h2, .trade-col-head h2, .export-options > h2) {
+  font-family: var(--z-display); font-weight: 400; letter-spacing: 0.03em;
+  color: var(--z-green); text-shadow: 0 0 12px var(--accent-glow);
+}
+[data-theme="zaun"] .content h1 { font-size: 30px; }
+[data-theme="zaun"] .content :is(.settings-card > h2, .trade-col-head h2, .export-options > h2) { font-size: 20px; }
+
+/* ── Header ── */
+[data-theme="zaun"] .app-header {
+  background: color-mix(in srgb, var(--z-smog) 82%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--z-green) 30%, transparent);
+  box-shadow: 0 1px 18px color-mix(in srgb, var(--z-green) 10%, transparent);
+}
+[data-theme="zaun"] .brand-mark { border-color: var(--z-green); box-shadow: 0 0 10px var(--accent-glow); animation: z-flicker 7s infinite; }
+[data-theme="zaun"] .brand-mark::before { background: linear-gradient(135deg, var(--z-green), var(--z-purple)); }
+
+/* ── Neon: buttons and segmented controls ── */
+[data-theme="zaun"] .btn { border-color: color-mix(in srgb, var(--z-green) 22%, var(--border-0)); transition: border-color 0.2s, box-shadow 0.2s, color 0.2s, background 0.2s; }
+[data-theme="zaun"] .btn:hover:not(:disabled) { border-color: var(--z-green); color: var(--z-green); background: var(--bg-2); box-shadow: 0 0 14px var(--accent-glow), inset 0 0 8px color-mix(in srgb, var(--z-green) 18%, transparent); }
+[data-theme="zaun"] .btn.primary { background: var(--z-green); color: var(--on-accent); box-shadow: 0 0 16px var(--accent-glow); }
+[data-theme="zaun"] .btn.primary:hover:not(:disabled) { background: #7dffb4; color: var(--on-accent); }
+[data-theme="zaun"] .seg button.active { background: color-mix(in srgb, var(--z-purple) 30%, var(--bg-2)); color: #fff; box-shadow: 0 0 10px color-mix(in srgb, var(--z-purple) 45%, transparent); }
+
+/* ── Dock: a neon tube that flickers on ── */
+[data-theme="zaun"] .nav-dock,
+[data-theme="zaun"] .stats-row {
+  border-radius: 20px 6px 20px 6px;
+  border: 1px solid color-mix(in srgb, var(--z-green) 35%, transparent);
+  background: color-mix(in srgb, var(--bg-1) 78%, transparent);
+  box-shadow: 0 10px 30px oklch(0 0 0 / 0.55), 0 0 22px color-mix(in srgb, var(--z-green) 12%, transparent);
+}
+[data-theme="zaun"] .nav-dock .sliding-tabs-glider {
+  border-radius: 16px 4px 16px 4px;
+  background: color-mix(in srgb, var(--z-green) 14%, transparent);
+  border: 1.5px solid var(--z-green);
+  box-shadow: 0 0 16px var(--accent-glow), inset 0 0 12px color-mix(in srgb, var(--z-green) 30%, transparent);
+}
+[data-theme="zaun"] .nav-dock .sliding-tabs-glider::after {
+  /* a chem bubble riding under the highlight */
+  width: 8px; height: 8px; bottom: -5px; border-radius: 50%; transform: translateX(-50%);
+  background: var(--z-pink); box-shadow: 0 0 10px var(--z-pink);
+}
+[data-theme="zaun"] .nav-dock .sliding-tab[data-active="true"] .sliding-tab-label { color: #eafff2; text-shadow: 0 0 10px var(--z-green); animation: z-flicker-on 0.9s steps(1); }
+[data-theme="zaun"] .nav-dock .sliding-tab[data-active="true"] .tab-icon { color: var(--z-green); filter: drop-shadow(0 0 6px var(--z-green)); animation: z-flicker-on 0.9s steps(1); }
+[data-theme="zaun"] .nav-dock .sliding-tab[data-active="true"] .sliding-tab-badge { background: var(--z-pink); color: #fff; box-shadow: 0 0 8px var(--z-pink); }
+[data-theme="zaun"] .sub-tabs { border-radius: 14px 4px 14px 4px; border-color: color-mix(in srgb, var(--z-purple) 35%, transparent); }
+[data-theme="zaun"] .sub-tabs .sliding-tabs-glider {
+  border-radius: 10px 3px 10px 3px; background: color-mix(in srgb, var(--z-purple) 26%, var(--bg-2));
+  border: 1px solid var(--z-purple); box-shadow: 0 0 14px color-mix(in srgb, var(--z-purple) 50%, transparent);
+}
+[data-theme="zaun"] .stat--complete .stat-value { color: var(--z-green); text-shadow: 0 0 8px var(--accent-glow); }
+[data-theme="zaun"] .stat-meter > span { background: linear-gradient(90deg, var(--z-green), var(--z-purple)); box-shadow: 0 0 8px var(--z-green); }
+
+@keyframes z-flicker-on {
+  0% { opacity: 0.2; } 8% { opacity: 1; } 14% { opacity: 0.3; } 22% { opacity: 1; }
+  30% { opacity: 0.55; } 38%, 100% { opacity: 1; }
+}
+@keyframes z-flicker {
+  0%, 91%, 100% { opacity: 1; } 92% { opacity: 0.4; } 93% { opacity: 1; } 95% { opacity: 0.6; } 96% { opacity: 1; }
+}
+
+/* ── Page entrance: a glitch ── */
+[data-theme="zaun"] .page-enter { animation: z-glitch-in 0.5s steps(1); }
+@keyframes z-glitch-in {
+  0% { opacity: 0; clip-path: inset(40% 0 52% 0); transform: translateX(-14px); }
+  12% { opacity: 1; clip-path: inset(10% 0 70% 0); transform: translateX(10px); }
+  24% { clip-path: inset(62% 0 8% 0); transform: translateX(-6px); }
+  36% { clip-path: inset(0 0 0 0); transform: translateX(4px); filter: hue-rotate(60deg); }
+  48% { transform: translateX(-2px); filter: none; }
+  60%, 100% { transform: none; clip-path: inset(0 0 0 0); }
+}
+
+/* ── Cards: chromatic split + glitch on hover ── */
+[data-theme="zaun"] .card-cell {
+  border-color: color-mix(in srgb, var(--z-green) 14%, var(--border-0));
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s;
+}
+[data-theme="zaun"] .card-cell:hover {
+  transform: translateY(-4px);
+  border-color: var(--z-green);
+  box-shadow: -3px 0 0 color-mix(in srgb, var(--z-pink) 75%, transparent), 3px 0 0 color-mix(in srgb, var(--z-cyan) 75%, transparent), 0 14px 32px color-mix(in srgb, var(--z-purple) 28%, transparent);
+}
+[data-theme="zaun"] .card-cell:hover .card-art { animation: z-card-glitch 0.4s steps(1); }
+@keyframes z-card-glitch {
+  0% { transform: translateX(3px); filter: hue-rotate(80deg) saturate(1.6); }
+  25% { transform: translateX(-3px); filter: none; }
+  50% { transform: translateX(2px); filter: hue-rotate(-60deg); }
+  75%, 100% { transform: none; filter: none; }
+}
+[data-theme="zaun"] .card-cell.s-playset { border-color: color-mix(in srgb, var(--z-green) 55%, transparent); box-shadow: 0 0 12px color-mix(in srgb, var(--z-green) 18%, transparent); }
+
+/* ── Panels: organic corners, a faint inner glow ── */
+[data-theme="zaun"] :is(.settings-card, .trade-col, .export-options) {
+  border-radius: 20px 6px 20px 6px;
+  border-color: color-mix(in srgb, var(--z-green) 20%, var(--border-0));
+  background: color-mix(in srgb, var(--bg-1) 88%, transparent);
+  box-shadow: inset 0 0 30px color-mix(in srgb, var(--z-green) 5%, transparent);
+}
+[data-theme="zaun"] .card-modal { border-radius: 24px 6px 24px 6px; box-shadow: 0 24px 80px oklch(0 0 0 / 0.7), 0 0 30px color-mix(in srgb, var(--z-purple) 30%, transparent); }
+[data-theme="zaun"] .sync-pill--saved .sync-dot { box-shadow: 0 0 8px var(--z-green); animation: z-flicker 5s infinite; }
+[data-theme="zaun"] .tag-btn.active { box-shadow: 0 0 10px var(--accent-glow); }
+
+@media (prefers-reduced-motion: reduce) {
+  :is(.z-smog, .z-art-slide, .z-flow, .z-spray, .z-bubbles span),
+  [data-theme="zaun"] :is(.brand-mark, .page-enter, .card-art, .sync-dot, .sliding-tab-label, .tab-icon) { animation: none !important; }
+  .z-art-slide:first-child { opacity: 0.3; }
+  .z-spray { stroke-dashoffset: 0; }
+}

@@ -4,8 +4,8 @@ import CheckForUpdatesButton from '../components/CheckForUpdatesButton';
 import ExportButton from '../components/ExportButton';
 import ImportButton from '../components/ImportButton';
 import { timeAgo } from '../sync/timeAgo';
-import { THEMES, applyTheme, loadThemeId } from '../themes';
-import { ThemeSigil } from '../components/ThemeBackdrop';
+import { THEMES, switchTheme, loadThemeId } from '../themes';
+import { ThemeSigil, ThemeShapes } from '../components/ThemeBackdrop';
 
 
 const STATUS_LABEL = {
@@ -131,7 +131,11 @@ function SyncSection() {
 
 function AppearanceSection() {
   const [current, setCurrent] = useState(loadThemeId);
-  const pick = (id) => { applyTheme(id); setCurrent(id); };
+  const pick = (id, e) => {
+    if (id === current) return;
+    switchTheme(id, e && e.clientX ? { x: e.clientX, y: e.clientY } : null);
+    setCurrent(id);
+  };
   return (
     <div className="theme-grid">
       {THEMES.map((t) => (
@@ -139,11 +143,13 @@ function AppearanceSection() {
           key={t.id}
           data-theme={t.id}
           className={`theme-card${current === t.id ? ' theme-card--active' : ''}`}
-          onClick={() => pick(t.id)}
+          onClick={(e) => pick(t.id, e)}
           aria-pressed={current === t.id}
         >
           <span className="theme-card-art">
-            {t.art ? <img src={t.art} alt="" loading="lazy" /> : <ThemeSigil className="theme-card-sigil" />}
+            {t.art ? <img src={t.art} alt="" loading="lazy" />
+              : t.shapes ? <ThemeShapes className="theme-card-shapes" />
+              : <ThemeSigil className="theme-card-sigil" />}
           </span>
           <span className="theme-card-strip" />
           <span className="theme-card-text">
@@ -167,6 +173,12 @@ export default function Settings({ allCards, collection, foilCollection, onImpor
       <section className="settings-card">
         <h2>Appearance</h2>
         <AppearanceSection />
+        <p className="settings-note small">
+          Theme art is from Riftbound cards and League of Legends splash art by Riot Games, used under Riot's Legal Jibber Jabber policy.
+          Card Manager isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or
+          anyone officially involved in producing or managing Riot Games properties. Riot Games and all
+          associated properties are trademarks or registered trademarks of Riot Games, Inc.
+        </p>
       </section>
 
       <section className="settings-card">
