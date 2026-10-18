@@ -1,0 +1,323 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   Piltover — the City of Progress as a hextech workshop. Arcane's Piltover
+   is Art Deco in whites, blues and golds; this theme sets brass, copper and
+   hextech blue on a night-navy blueprint: riveted brass panels, a brass
+   tab plate, Deco (Limelight) lettering, and a quiet, mechanical backdrop —
+   meshing gears, a glowing hextech core, a pressure gauge, pipes venting
+   steam — around a Deco window of Piltover's champions.
+
+   Scoped to [data-theme="piltover"]; loads after the other stylesheets so
+   its tokens win. Pointer parallax lives in themeFx.js.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+[data-theme="piltover"] {
+  color-scheme: dark;
+
+  --pv-paper: #0f1626;      /* night sky over Piltover */
+  --pv-gold: #d1a54a;       /* brass — lines, fills, the highlight */
+  --pv-on-gold: #0f1626;    /* text sitting on gold */
+  --pv-line: #b8913f;       /* deco borders: slightly deeper brass */
+  --pv-shadow: #050811;     /* hard offset shadows */
+  --pv-hex: #3594d6;        /* hextech blue */
+  --pv-sky: #9fdcf0;        /* hexcrystal facet, flat */
+  --pv-steel: #3b5079;      /* dark motifs: small gear, airship */
+  --pv-steel-dark: #1b2641; /* skyline silhouette */
+  --pv-green: #3fb07e;
+  --pv-copper: #b8743a;
+  --pv-brass: linear-gradient(180deg, #ecca72 0%, #d1a54a 45%, #9c7128 100%);
+  --pv-rivet: radial-gradient(circle at 40% 40%, #f6dd9a 0, #b88a34 40%, #5c4114 62%, transparent 70%);
+
+  --th-hue: 260;
+  --th-chroma: 0.6;
+  --accent: var(--pv-gold);
+  --accent-2: var(--pv-hex);
+  --ambient: var(--pv-sky);
+  --on-accent: var(--pv-on-gold);
+
+  --bg-0: var(--pv-paper);
+  --bg-1: #151f33;
+  --bg-2: #1c2840;
+  --bg-3: #25334f;
+  --border-0: #2a3858;
+  --border-1: var(--pv-line);
+  --text-0: #f1e8d4;        /* ivory */
+  --text-1: #cfc6b2;
+  --text-2: #9a9688;
+  --text-3: #747464;
+
+  /* flat: no glows, no gradient highlights */
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+  --accent-line: var(--pv-line);
+  --accent-glow: transparent;
+  --accent-hi: var(--accent);
+  --accent-2-hi: var(--accent);
+
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-xl: 8px;
+  --shadow-1: none;
+  --shadow-2: 6px 6px 0 var(--pv-shadow);
+}
+
+/* ── Workshop surfaces: a faint hextech blueprint grid behind everything ── */
+html[data-theme="piltover"],
+html[data-theme="piltover"] body {
+  background:
+    repeating-linear-gradient(0deg, color-mix(in srgb, var(--pv-hex) 9%, transparent) 0 1px, transparent 1px 160px),
+    repeating-linear-gradient(90deg, color-mix(in srgb, var(--pv-hex) 9%, transparent) 0 1px, transparent 1px 160px),
+    repeating-linear-gradient(0deg, color-mix(in srgb, var(--pv-hex) 4%, transparent) 0 1px, transparent 1px 32px),
+    repeating-linear-gradient(90deg, color-mix(in srgb, var(--pv-hex) 4%, transparent) 0 1px, transparent 1px 32px),
+    radial-gradient(900px 600px at 85% 10%, color-mix(in srgb, var(--pv-hex) 10%, transparent), transparent 70%),
+    var(--pv-paper);
+}
+[data-theme="piltover"] * { backdrop-filter: none !important; }
+[data-theme="piltover"] ::selection { background: var(--pv-gold); color: var(--pv-on-gold); }
+[data-theme="piltover"] ::-webkit-scrollbar-thumb { background: var(--pv-steel); border-color: var(--pv-paper); }
+
+/* ── Backdrop: hide the other themes' layers, show the workshop ── */
+[data-theme="piltover"] .theme-backdrop { height: 100vh; }
+[data-theme="piltover"] :is(.theme-lattice, .theme-art, .theme-sigil) { display: none; }
+.theme-shapes { display: none; }
+[data-theme="piltover"] .theme-shapes { display: block; position: absolute; inset: 0; }
+
+.shp {
+  position: absolute;
+  /* gentle parallax (themeFx sets --mx/--my in -1..1) */
+  translate: calc(var(--mx, 0) * var(--depth, 10) * 1px) calc(var(--my, 0) * var(--depth, 10) * 1px);
+  transition: translate 1.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Gears. Each pair meshes: the smaller one turns the other way, faster by
+   the tooth ratio, so the teeth stay engaged. */
+.shp-gear-big { width: 240px; height: 240px; top: 470px; right: -80px; fill: var(--pv-gold); --depth: 8; animation: pv-turn 40s linear infinite; }
+.shp-gear-small { width: 150px; height: 150px; top: 638px; right: 108px; fill: var(--pv-steel); --depth: 8; animation: pv-turn 25s linear infinite reverse; }
+.shp-gear-copper { width: 140px; height: 140px; left: 40px; bottom: 120px; fill: var(--pv-copper); --depth: 6; animation: pv-turn 36s linear infinite; }
+.shp-gear-tiny { width: 90px; height: 90px; left: 145px; bottom: 85px; fill: var(--pv-gold); --depth: 6; animation: pv-turn 24s linear infinite reverse; }
+:is(.shp-gear-big, .shp-gear-small, .shp-gear-copper, .shp-gear-tiny) path { filter: drop-shadow(0 4px 6px oklch(0 0 0 / 0.5)); }
+
+/* Hextech core: a glowing crystal in a riveted brass housing. */
+.shp-hexgate { width: 150px; height: 150px; bottom: 175px; left: 270px; stroke: var(--pv-gold); fill: none; --depth: 10; }
+.shp-hexgate .hexgate-ring { fill: var(--pv-gold); stroke: none; transform-origin: 100px 100px; animation: pv-turn 90s linear infinite; }
+.shp-hexgate circle:not(.hexgate-ring circle) { stroke: var(--pv-steel); }
+.shp-hexgate .hexgate-core {
+  fill: var(--pv-hex); stroke: var(--pv-sky); stroke-width: 2;
+  filter: drop-shadow(0 0 10px var(--pv-hex)) drop-shadow(0 0 22px color-mix(in srgb, var(--pv-hex) 60%, transparent));
+  animation: pv-glow 3.4s ease-in-out infinite;
+}
+
+/* Hextech crystals: drift slowly with a soft glow. */
+.shp-crystal { fill: var(--pv-hex); filter: drop-shadow(0 0 8px color-mix(in srgb, var(--pv-hex) 70%, transparent)); animation: pv-float 7s ease-in-out infinite alternate; }
+.shp-crystal .facet { fill: var(--pv-sky); }
+.shp-crystal .facet2 { fill: #0a1020; opacity: 0.35; }
+.shp-crystal-a { width: 40px; height: 66px; top: 13%; left: 44%; --depth: 14; }
+.shp-crystal-b { width: 28px; height: 46px; top: 230px; right: 340px; --depth: 16; animation-delay: -3.5s; }
+
+/* Pressure gauge: the needle hunts around its working pressure. */
+.shp-gauge { width: 104px; height: 104px; bottom: 34px; left: 282px; --depth: 8; }
+.shp-gauge .gauge-rim { fill: var(--pv-gold); }
+.shp-gauge .gauge-face { fill: #f1e8d4; }
+.shp-gauge .gauge-red { stroke: #c0392b; stroke-width: 6; fill: none; }
+.shp-gauge line { stroke: var(--pv-on-gold); stroke-width: 2; }
+.shp-gauge text { font: 700 9px var(--font-sans); fill: var(--pv-on-gold); letter-spacing: 0.1em; }
+.shp-gauge .gauge-needle { fill: #b0281b; transform-origin: 60px 60px; animation: pv-needle 7s ease-in-out infinite; }
+.shp-gauge .gauge-hub { fill: var(--pv-on-gold); stroke: var(--pv-gold); stroke-width: 2; }
+
+/* Brass pipes along the bottom, a valve wheel, and two vents. */
+.shp-pipes { width: 560px; height: 150px; left: 0; bottom: 0; --depth: 4; }
+.shp-pipe-right { width: 60px; height: 220px; right: 330px; bottom: 0; --depth: 4; }
+:is(.shp-pipes, .shp-pipe-right) .pipe { stroke: #8f6a28; stroke-width: 16; }
+:is(.shp-pipes, .shp-pipe-right) .pipe-hi { stroke: #e3be6a; stroke-width: 3; opacity: 0.7; }
+:is(.shp-pipes, .shp-pipe-right) .flange { fill: var(--pv-gold); stroke: #5c4114; stroke-width: 1.5; }
+.shp-pipes .valve { stroke: #c0392b; }
+.shp-pipes .valve-rim { fill: none; stroke: #c0392b; stroke-width: 5; }
+.shp-pipes .valve line { stroke-width: 3; }
+.shp-pipes .valve-hub { fill: var(--pv-gold); stroke: none; }
+.shp-pipes .valve { animation: pv-valve 9s ease-in-out infinite; transform-origin: 0 0; }
+
+/* Steam: soft puffs rising from each vent. */
+.p-steam { position: absolute; width: 0; height: 0; }
+.p-steam-left { left: 420px; bottom: 124px; }
+.p-steam-right { right: 360px; bottom: 196px; }
+.p-steam i {
+  position: absolute; left: -16px; top: -16px; width: 32px; height: 32px; border-radius: 50%;
+  background: radial-gradient(circle, oklch(0.95 0.01 250 / 0.55), oklch(0.95 0.01 250 / 0) 70%);
+  filter: blur(4px); opacity: 0;
+  animation: pv-steam 4.5s ease-out infinite;
+}
+.p-steam i:nth-child(2) { animation-delay: 1.5s; }
+.p-steam i:nth-child(3) { animation-delay: 3s; }
+.p-steam-right i { animation-duration: 5.2s; }
+
+/* Art Deco arch window: Riftbound champions of Piltover, one every 12s. */
+.p-window { width: 260px; height: 400px; top: 150px; right: 48px; --depth: 6; }
+.p-window-frame {
+  position: absolute; inset: 0 0 34px; border-radius: 130px 130px 0 0;
+  border: 3px solid var(--pv-gold); background: var(--bg-1); padding: 8px;
+  box-shadow: 0 14px 34px oklch(0 0 0 / 0.55), 0 0 26px color-mix(in srgb, var(--pv-hex) 18%, transparent);
+}
+.p-window-glass {
+  position: relative; width: 100%; height: 100%; overflow: hidden;
+  border-radius: 122px 122px 0 0; border: 1.5px solid var(--pv-line); background: var(--bg-2);
+}
+.p-slide { position: absolute; inset: 0; margin: 0; opacity: 0; animation: p-slide 60s linear infinite; }
+.p-slide-img { position: absolute; inset: 0; background: center 24% / cover no-repeat; animation: p-push 60s linear infinite; }
+.p-slide figcaption {
+  position: absolute; left: 0; right: 0; bottom: 0; padding: 7px 10px 8px;
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  background: var(--bg-1); border-top: 2px solid var(--pv-gold);
+}
+.p-slide figcaption b { font-family: 'Limelight', var(--font-sans); font-weight: 400; font-size: 17px; letter-spacing: 0.06em; color: var(--pv-gold); text-transform: uppercase; }
+.p-slide figcaption span { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-2); }
+.p-mullions { position: absolute; inset: 0; pointer-events: none; }
+.p-mullions::before { content: ''; position: absolute; left: 50%; top: 0; height: 42%; width: 2px; translate: -50% 0; background: var(--pv-gold); }
+.p-mullions::after { content: ''; position: absolute; left: 0; right: 0; top: 42%; height: 2px; background: var(--pv-gold); }
+.p-plinth { position: absolute; left: 0; right: 0; bottom: 0; height: 34px; display: flex; flex-direction: column; align-items: center; }
+.p-plinth span { display: block; height: 12px; background: var(--pv-brass); border: 1px solid #5c4114; }
+.p-plinth span:first-child { width: 86%; margin-top: 4px; }
+.p-plinth span:last-child { width: 104%; }
+
+@keyframes p-slide { 0% { opacity: 0; } 3%, 20% { opacity: 1; } 23%, 100% { opacity: 0; } }
+@keyframes p-push { 0% { transform: scale(1.08); } 23%, 100% { transform: scale(1); } }
+@keyframes pv-turn { to { transform: rotate(360deg); } }
+@keyframes pv-glow { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+@keyframes pv-float { from { transform: translateY(-6px); } to { transform: translateY(8px); } }
+@keyframes pv-needle {
+  0% { transform: rotate(-20deg); } 30% { transform: rotate(38deg); } 34% { transform: rotate(31deg); }
+  60% { transform: rotate(52deg); } 64% { transform: rotate(46deg); } 100% { transform: rotate(-20deg); }
+}
+@keyframes pv-valve { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(90deg); } }
+@keyframes pv-steam {
+  0% { opacity: 0; transform: translate(0, 0) scale(0.4); }
+  15% { opacity: 1; }
+  100% { opacity: 0; transform: translate(14px, -120px) scale(2.6); }
+}
+
+/* The card grid gets a veil so the workshop doesn't compete. */
+[data-theme="piltover"] .main:not(.no-sidebar) { background: color-mix(in srgb, var(--pv-paper) 86%, transparent); }
+
+/* ── Header ── */
+[data-theme="piltover"] .app-header {
+  background: linear-gradient(180deg, #172238, var(--pv-paper));
+  border-bottom: 2px solid var(--pv-line);
+  box-shadow: 0 2px 0 #5c4114, 0 6px 18px oklch(0 0 0 / 0.4);
+}
+[data-theme="piltover"] .brand-mark { border: 1.5px solid var(--pv-line); border-radius: 50%; background: var(--bg-2); }
+[data-theme="piltover"] .brand-mark::before { background: var(--pv-hex); opacity: 1; inset: 5px; filter: drop-shadow(0 0 4px var(--pv-hex)); }
+[data-theme="piltover"] .global-search input { background: var(--bg-1); border: 1.5px solid var(--pv-line); border-radius: 4px; }
+[data-theme="piltover"] .global-search input:focus { outline: none; border-color: var(--pv-hex); box-shadow: 0 0 0 3px color-mix(in srgb, var(--pv-hex) 25%, transparent); }
+
+/* ── Deco marquee headings (Limelight) ── */
+[data-theme="piltover"] .brand-name { font-family: 'Limelight', var(--font-sans); font-weight: 400; font-size: 16px; letter-spacing: 0.06em; color: var(--pv-gold); }
+[data-theme="piltover"] .brand-name .muted { color: var(--text-1); }
+[data-theme="piltover"] .content :is(h1, .settings-card > h2, .trade-col-head h2, .export-options > h2) {
+  font-family: 'Limelight', var(--font-sans); font-weight: 400; letter-spacing: 0.05em; color: var(--pv-gold);
+}
+[data-theme="piltover"] .content h1 { font-size: 28px; }
+[data-theme="piltover"] .content :is(.settings-card > h2, .trade-col-head h2, .export-options > h2) { font-size: 19px; }
+
+/* ── Buttons: brass fittings ── */
+[data-theme="piltover"] .btn {
+  background: var(--bg-1); border: 1.5px solid color-mix(in srgb, var(--pv-gold) 60%, var(--border-0)); border-radius: 4px; color: var(--text-0);
+  font-weight: 600; transition: border-color 0.2s, background 0.2s, color 0.2s;
+}
+[data-theme="piltover"] .btn:hover:not(:disabled) { border-color: var(--pv-gold); background: var(--bg-2); color: var(--pv-gold); }
+[data-theme="piltover"] .btn.ghost { border-color: transparent; background: transparent; }
+[data-theme="piltover"] .btn.ghost:hover:not(:disabled) { border-color: var(--pv-line); background: var(--bg-1); }
+[data-theme="piltover"] :is(.btn.primary, .seg button.active) {
+  background: var(--pv-brass); color: var(--pv-on-gold); border-color: #5c4114;
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.35), inset 0 -2px 0 oklch(0 0 0 / 0.2);
+}
+[data-theme="piltover"] .btn.primary:hover:not(:disabled) { filter: brightness(1.08); color: var(--pv-on-gold); }
+[data-theme="piltover"] .seg { border: 1.5px solid var(--pv-line); border-radius: 4px; background: var(--bg-1); }
+[data-theme="piltover"] .seg button { border-radius: 2px; transition: background 0.2s, color 0.2s; }
+
+/* ── Riveted brass plating ── */
+[data-theme="piltover"] :is(.nav-dock, .stats-row, .settings-card, .trade-col, .export-options) {
+  border: 2px solid var(--pv-line); border-radius: 6px;
+  background:
+    var(--pv-rivet) 8px 8px / 7px 7px no-repeat,
+    var(--pv-rivet) calc(100% - 8px) 8px / 7px 7px no-repeat,
+    var(--pv-rivet) 8px calc(100% - 8px) / 7px 7px no-repeat,
+    var(--pv-rivet) calc(100% - 8px) calc(100% - 8px) / 7px 7px no-repeat,
+    var(--bg-1);
+  box-shadow: inset 0 0 0 1px oklch(0 0 0 / 0.35), inset 0 1px 0 oklch(0.95 0.08 85 / 0.08), 0 10px 26px oklch(0 0 0 / 0.45);
+}
+[data-theme="piltover"] :is(.nav-dock, .stats-row) { padding-left: 16px; padding-right: 16px; }
+[data-theme="piltover"] .stats-row { padding: 0 10px; }
+
+/* Dock: a brass plate slides between tabs, lit from below in hextech blue. */
+[data-theme="piltover"] .nav-dock .sliding-tabs-glider {
+  border: 1px solid #5c4114; border-radius: 4px;
+  background:
+    var(--pv-rivet) 5px 50% / 5px 5px no-repeat,
+    var(--pv-rivet) calc(100% - 5px) 50% / 5px 5px no-repeat,
+    var(--pv-brass);
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.4), inset 0 -2px 0 oklch(0 0 0 / 0.25), 0 3px 14px color-mix(in srgb, var(--pv-hex) 40%, transparent);
+}
+[data-theme="piltover"] .nav-dock .sliding-tabs-glider[data-ready] {
+  transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1), width 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+}
+[data-theme="piltover"] .nav-dock .sliding-tabs-glider::after {
+  /* hextech underglow */
+  width: 60%; height: 2px; bottom: -4px; border-radius: 2px; transform: translateX(-50%);
+  background: var(--pv-hex); box-shadow: 0 0 8px var(--pv-hex), 0 0 16px var(--pv-hex);
+}
+[data-theme="piltover"] .nav-dock .sliding-tab { color: var(--text-1); font-weight: 600; border-radius: 3px; }
+[data-theme="piltover"] .nav-dock .sliding-tab:hover { background: var(--bg-2); }
+[data-theme="piltover"] .nav-dock .sliding-tab[data-active="true"],
+[data-theme="piltover"] .nav-dock .sliding-tab[data-active="true"] .tab-icon { color: var(--pv-on-gold); filter: none; background: transparent; }
+[data-theme="piltover"] .nav-dock .sliding-tab[data-active="true"] .tab-icon { animation: none; }
+[data-theme="piltover"] .nav-dock .sliding-tab[data-active="true"] .sliding-tab-badge { background: var(--pv-on-gold); color: var(--pv-gold); }
+[data-theme="piltover"] .sub-tabs { border: 1.5px solid var(--pv-line); border-radius: 4px; background: var(--bg-1); }
+[data-theme="piltover"] .sub-tabs .sliding-tabs-glider {
+  background: color-mix(in srgb, var(--pv-hex) 30%, var(--bg-2)); border: 1px solid var(--pv-hex); border-radius: 3px;
+  box-shadow: 0 0 12px color-mix(in srgb, var(--pv-hex) 45%, transparent);
+}
+[data-theme="piltover"] .sub-tabs .sliding-tabs-glider[data-ready] { transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1), width 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+[data-theme="piltover"] .sub-tabs .sliding-tab[data-active="true"] { color: #fff; }
+[data-theme="piltover"] .stat + .stat { border-left: 1.5px solid color-mix(in srgb, var(--pv-gold) 50%, transparent); }
+[data-theme="piltover"] .stat--complete .stat-value { color: var(--pv-hex); }
+[data-theme="piltover"] .stat-meter { height: 3px; background: var(--bg-2); }
+[data-theme="piltover"] .stat-meter > span { background: var(--pv-hex); box-shadow: 0 0 6px var(--pv-hex); }
+
+/* ── Cards: brass edge, a calm lift on hover ── */
+[data-theme="piltover"] .card-cell {
+  border: 1.5px solid color-mix(in srgb, var(--pv-gold) 35%, var(--border-0)); border-radius: 6px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s;
+}
+[data-theme="piltover"] .card-cell:hover { transform: translateY(-3px); border-color: var(--pv-gold); box-shadow: 0 12px 26px oklch(0 0 0 / 0.5); }
+[data-theme="piltover"] .card-cell.s-playset { box-shadow: inset 0 -3px 0 var(--pv-green); }
+[data-theme="piltover"] .card-cell.s-incomplete { box-shadow: inset 0 -3px 0 var(--warn); }
+[data-theme="piltover"] .trade-col-head { border-top-width: 4px; }
+[data-theme="piltover"] .sync-pill { border: 1.5px solid var(--pv-line); background: var(--bg-1); color: var(--text-0); font-weight: 600; }
+[data-theme="piltover"] .sync-pill--saved .sync-dot { box-shadow: 0 0 6px var(--pv-green); }
+[data-theme="piltover"] .card-modal { border: 2px solid var(--pv-line); box-shadow: 0 24px 70px oklch(0 0 0 / 0.65); }
+
+/* ── Theme-switch wipe (see switchTheme in themes/index.js) ── */
+::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-new(root) { animation: pv-theme-wipe 0.7s cubic-bezier(0.7, 0, 0.2, 1); }
+@keyframes pv-theme-wipe {
+  from { clip-path: circle(0 at var(--vt-x, 50%) var(--vt-y, 50%)); }
+  to { clip-path: circle(150vmax at var(--vt-x, 50%) var(--vt-y, 50%)); }
+}
+
+/* ── Click burst particles (themeFx.js), shared by every theme with bursts ── */
+.fx-burst { position: fixed; left: 0; top: 0; pointer-events: none; z-index: 1000; }
+.fx-burst > i { position: absolute; display: block; translate: -50% -50%; }
+
+@media (prefers-reduced-motion: reduce) {
+  .shp, .shp *, .p-steam i, .p-slide, .p-slide-img { animation: none !important; }
+  .shp { transition: none; }
+  .p-slide:first-child { opacity: 1; }
+  ::view-transition-new(root) { animation: none; }
+}
+
+/* Theme picker preview: a few workshop pieces shrunk into the card (any theme). */
+.theme-card-shapes { display: block !important; position: absolute; inset: 0; background: #0f1626; overflow: hidden; }
+.theme-card-shapes .shp { translate: none; }
+.theme-card-shapes .shp-gear-big { width: 96px; height: 96px; top: -18px; right: -18px; }
+.theme-card-shapes .shp-gear-small { width: 60px; height: 60px; top: 50px; right: 52px; }
+.theme-card-shapes .shp-crystal-a { width: 20px; height: 32px; top: 18px; left: 34%; }
+.theme-card-shapes .shp-hexgate { width: 64px; height: 64px; bottom: -10px; left: 8px; }
+.theme-card-shapes :is(.p-window, .shp-crystal-b, .shp-gear-copper, .shp-gear-tiny, .shp-gauge, .shp-pipes, .shp-pipe-right, .p-steam) { display: none; }
