@@ -59,9 +59,16 @@ export function isPlaysetEligible(card) {
 export const VARIANT_SUFFIX =
   /\s*\((Alternate Art|Overnumbered|Signature|Metal|Starter|Ultimate|Launch Exclusive|GG EZ)\)\s*$/i;
 
+// Champion names are "Name - Title" in most sets but "Name, Title" in Vendetta
+// ("Ahri, Inquisitive" is a reprint of "Ahri - Inquisitive"). Champions only:
+// other cards can have a comma in their real name ("Allay, Eager Admirer").
+const CHAMPION_COMMA = /^([^,]+),\s+/;
+
 /** Gameplay identity of a printing — its name minus any variant suffix. */
 export function printingKey(card) {
-  return (card?.name ?? '').replace(VARIANT_SUFFIX, '').trim().toLowerCase();
+  let name = (card?.name ?? '').replace(VARIANT_SUFFIX, '').trim();
+  if (card?.classification?.supertype === 'Champion') name = name.replace(CHAMPION_COMMA, '$1 - ');
+  return name.toLowerCase();
 }
 
 /** Short label for a printing's art: 'Alternate Art', 'Judge', 'Standard'… */
