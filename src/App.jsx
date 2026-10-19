@@ -20,6 +20,7 @@ import Friends from './pages/Friends';
 import SyncIndicator from './components/SyncIndicator';
 import ThemeBackdrop from './components/ThemeBackdrop';
 import SlidingTabs from './components/SlidingTabs';
+import { useIsMobile } from './hooks/useIsMobile';
 import { SyncProvider, useSync } from './sync/SyncContext';
 import { GAMES, GAME_IDS, DEFAULT_GAME, getGame } from './games';
 import { GameContext } from './games/GameContext';
@@ -141,6 +142,12 @@ const GearIcon = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="3" />
     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+  </svg>
+);
+
+const FilterIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M3 5h18M6 12h12M10 19h4" />
   </svg>
 );
 
@@ -304,6 +311,9 @@ function GameApp({ game, onSwitchGame }) {
   const consumeNewDeckLegend = useCallback(() => setNewDeckLegend(null), []);
   const [activeSetId, setActiveSetId] = useState(null);
   const [view, setView] = useState('grid');
+  // Phones: filters live in a bottom sheet, stats in a strip above the cards.
+  const isMobile = useIsMobile();
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [loading, setLoading] = useState(() => !cached?.cards);
   const [error, setError] = useState(null);
 
@@ -586,6 +596,36 @@ function GameApp({ game, onSwitchGame }) {
     };
   }
 
+  const statsRow = (
+      <div className="stats-row">
+        {globalStats.value != null && (
+          <div className="stat">
+            <span className="stat-label">Value</span>
+            <span className="stat-value">${globalStats.value.toFixed(2)}</span>
+          </div>
+        )}
+        <div className="stat">
+          <span className="stat-label">Owned</span>
+          <span className="stat-value">{globalStats.owned}<span className="stat-of">/{globalStats.total}</span></span>
+        </div>
+        <div className="stat stat--complete">
+          <span className="stat-label">Complete</span>
+          <span className="stat-value">{globalStats.pct}%</span>
+          <span className="stat-meter" aria-hidden="true"><span style={{ width: `${Math.min(100, globalStats.pct)}%` }} /></span>
+        </div>
+      </div>
+  );
+
+  const filterBar = (
+    <FilterBar
+      filters={filters}
+      sort={sort}
+      onChange={setFilters}
+      onSortChange={setSort}
+      allCards={allCards.filter(c => c.classification?.type !== 'Rune' && !game.promoFoldSets.has(c.set?.set_id))}
+    />
+  );
+
   return (
     <div className="app">
       {/* ── Header ── */}
@@ -628,8 +668,10 @@ function GameApp({ game, onSwitchGame }) {
           >
             <GearIcon />
           </button>
-          <ExportButton allCards={allCards} collection={collection} foilCollection={foilCollection} />
-          <ImportButton allCards={allCards} onImport={handleImport} />
+          <div className="header-csv">
+            <ExportButton allCards={allCards} collection={collection} foilCollection={foilCollection} />
+            <ImportButton allCards={allCards} onImport={handleImport} />
+          </div>
         </div>
       </header>
 
@@ -647,37 +689,13 @@ function GameApp({ game, onSwitchGame }) {
             badge: g.id === 'collection' && tab === 'collection' ? totalVisible : null,
           }))}
         />
-        <div className="stats-row">
-          {globalStats.value != null && (
-            <div className="stat">
-              <span className="stat-label">Value</span>
-              <span className="stat-value">${globalStats.value.toFixed(2)}</span>
-            </div>
-          )}
-          <div className="stat">
-            <span className="stat-label">Owned</span>
-            <span className="stat-value">{globalStats.owned}<span className="stat-of">/{globalStats.total}</span></span>
-          </div>
-          <div className="stat stat--complete">
-            <span className="stat-label">Complete</span>
-            <span className="stat-value">{globalStats.pct}%</span>
-            <span className="stat-meter" aria-hidden="true"><span style={{ width: `${Math.min(100, globalStats.pct)}%` }} /></span>
-          </div>
-        </div>
+        {!isMobile && statsRow}
       </div>
 
       {/* ── Main ── */}
-      <div className={`main${tab !== 'collection' ? ' no-sidebar' : ''}`}>
-        {/* Sidebar — only in collection tab */}
-        {tab === 'collection' && (
-          <FilterBar
-            filters={filters}
-            sort={sort}
-            onChange={setFilters}
-            onSortChange={setSort}
-            allCards={allCards.filter(c => c.classification?.type !== 'Rune' && !game.promoFoldSets.has(c.set?.set_id))}
-          />
-        )}
+      <div className={`main${tab !== 'collection' || isMobile ? ' no-sidebar' : ''}`}>
+        {/* Sidebar — only in collection tab (a bottom sheet on phones) */}
+        {tab === 'collection' && !isMobile && filterBar}
 
         {/* Content */}
         <div className="content">
@@ -801,6 +819,8 @@ function GameApp({ game, onSwitchGame }) {
               />
             ) : (
               <>
+                {isMobile && <div className="mobile-stats">{statsRow}</div>}
+
                 {/* Radiance notice — riftcodex hasn't ingested the set yet, so it
                     can't appear as a real tab; this self-removes once it has. */}
                 {game.id === 'riftbound' && !setIds.includes('RAD') && game.features.setLogos.RAD && (
@@ -862,6 +882,11 @@ function GameApp({ game, onSwitchGame }) {
 
                 {/* Content toolbar */}
                 <div className="content-toolbar">
+                  {isMobile && (
+                    <button className="btn mobile-filter-btn" onClick={() => setFiltersOpen(true)}>
+                      <FilterIcon /> Filters{activeChips.length > 0 && <span className="mobile-filter-count">{activeChips.length}</span>}
+                    </button>
+                  )}
                   <div className="active-filters">
                     {activeChips.length > 0 ? activeChips.map(ch => (
                       <span key={ch.k} className="active-filter-pill">
@@ -966,6 +991,20 @@ function GameApp({ game, onSwitchGame }) {
           </div>
         </div>
       </div>
+
+      {/* Phones: filters in a bottom sheet */}
+      {isMobile && filtersOpen && tab === 'collection' && (
+        <div className="sheet-backdrop" onClick={() => setFiltersOpen(false)}>
+          <div className="filter-sheet" role="dialog" aria-label="Filters" onClick={(e) => e.stopPropagation()}>
+            <div className="sheet-head">
+              <span className="sheet-grip" aria-hidden="true" />
+              <b>Filters</b>
+              <button className="btn primary" onClick={() => setFiltersOpen(false)}>Done</button>
+            </div>
+            {filterBar}
+          </div>
+        </div>
+      )}
 
       <CardModal
         card={modalCard}

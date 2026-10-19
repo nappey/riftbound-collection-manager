@@ -5,6 +5,7 @@ import { exportDeckImage, exportSidingImage } from '../utils/deckImage';
 import { buildNameMap, deckFromImport } from '../utils/parseDeckList';
 import { indexPrintings, printingLabel } from '../utils/printings';
 import { useGame } from '../games/GameContext';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 // Deck shape (v2):
 // { id, name, updatedAt, legendId, legendIds, championId,
@@ -161,7 +162,24 @@ export default function DeckBuilder({
   const [libType, setLibType] = useState('');        // library type quick-filter ('' = all)
   const [libShowAll, setLibShowAll] = useState(false);     // ignore the identity filter (flag tiles instead)
   const [libBrowseIdentity, setLibBrowseIdentity] = useState(false); // revisit step 1 after it's complete
+  // Chosen-champion step (games with a chosen champion): shown right after
+  // the legend is set, until a champion is picked or the step is skipped.
+  const [libPickChampion, setLibPickChampion] = useState(false); // reopened from step 3
+  const [champSkipped, setChampSkipped] = useState(false);
   const [view, setView] = useState('build');         // center view: 'build' | 'details'
+  // Phones: one pane at a time (library or deck), tap-to-select deck tiles
+  // with an action bar in place of the hover overlay, and a toast on add.
+  const isMobile = useIsMobile();
+  const [mobilePane, setMobilePane] = useState('cards'); // 'cards' | 'deck'
+  const [picked, setPicked] = useState(null);            // { cardId, zone, key }
+  const [toast, setToast] = useState(null);
+  const toastTimer = useRef(null);
+  useEffect(() => () => clearTimeout(toastTimer.current), []);
+  function flashToast(text) {
+    setToast(text);
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 1600);
+  }
   const [collapsed, setCollapsed] = useState({});     // collapsed deck-panel sections
   const toggleCollapse = (key) => setCollapsed(c => ({ ...c, [key]: !c[key] }));
   const [copied, setCopied] = useState(false);
@@ -368,6 +386,11 @@ export default function DeckBuilder({
         text = ids.length ? `Changed legend → ${card.name}` : `Set legend: ${card.name}`;
       }
       const patch = withIdentity(d, next);
+      // A chosen champion must match the legend — drop one that no longer does.
+      if (!multi && d.championId) {
+        const tags = new Set(card.tags ?? []);
+        if (!(cardById.get(d.championId)?.tags ?? []).some(t => tags.has(t))) patch.championId = null;
+      }
       // Prepopulate the rune deck from the legend's domains if untouched.
       if (R.seedRunes && sumQty(d.runes) === 0) patch.runes = R.seedRunes([card]);
       return withLog(patch, text, 'legend');
@@ -405,6 +428,17 @@ export default function DeckBuilder({
       const text = id ? `Chose champion: ${cardById.get(id)?.name ?? ''}` : 'Cleared chosen champion';
       return withLog({ ...d, championId: id }, text, 'champion');
     });
+  }
+  // Step 2: set the chosen champion and make sure a copy is in the main deck.
+  function pickChampion(card) {
+    mutate(active.id, d => {
+      const main = { ...d.main };
+      if (!main[card.id]) main[card.id] = 1;
+      if (d.championId === card.id && d.main[card.id]) return d;
+      return withLog({ ...d, main, championId: card.id }, `Chose champion: ${card.name}`, 'champion');
+    });
+    setLibPickChampion(false);
+    setLibFilter('');
   }
   function setTag(cardId, label) {
     mutate(active.id, d => {
@@ -515,15 +549,40 @@ export default function DeckBuilder({
   const identityComplete = activeIdentityIds.length >= R.identity.max;
   // Step 1 (pick identity) until the identity is complete; step 2 (add cards)
   // after — unless the user chose to browse legends again.
-  const libStage = identityComplete && !libBrowseIdentity ? 'cards' : 'identity';
+  // Legal chosen champions: champion units sharing a tag (the champion's
+  // name, e.g. "Ahri") with the legend. One tile per card group, like the library.
+  const identityTags = new Set(identityCards.flatMap(c => c.tags ?? []));
+  const legalChampions = R.hasChampion && identityCards.length
+    ? allCards.filter(c =>
+        printings.get(c.id)?.base === c &&
+        c.classification?.supertype === 'Champion' &&
+        c.classification?.type !== 'Legend' &&
+        (c.tags ?? []).some(t => identityTags.has(t)))
+    : [];
+  const libStage = !identityComplete || libBrowseIdentity ? 'identity'
+    : R.hasChampion && (libPickChampion || (!active?.championId && !champSkipped)) ? 'champion'
+    : 'cards';
   const hasLegend = libStage === 'cards';
+  const champStage = libStage === 'champion';
   // Library results (plain function; React Compiler memoizes — see computeAnalysis).
   // Two-step flow: step 1 shows only legends; step 2 shows the rest of the pool,
   // restricted to cards playable under the chosen identity (game.deck.libraryFilter).
+  // Library order: by set (the game's release order), then energy, then
+  // color (the game's domain/color order; mono before multi, colorless last),
+  // then name.
+  const setRank = (c) => {
+    const i = game.setOrder.indexOf(c.set?.set_id);
+    return i === -1 ? 999 : i;
+  };
+  const colorRank = (c) => {
+    const order = game.faction.values;
+    const idx = (c.classification?.domain ?? []).map(d => order.indexOf(d)).filter(i => i !== -1);
+    if (!idx.length) return order.length * 2;           // colorless / neutral
+    return Math.min(...idx) * 2 + (idx.length > 1 ? 1 : 0);
+  };
   function computeLibResults() {
     const q = libFilter.toLowerCase().trim();
     const typeOf = R.typeOf;
-    const TYPE_ORDER = R.typeOrder;
     const matchQ = (c) => !q || c.name.toLowerCase().includes(q) || (c.tags ?? []).some(t => t.toLowerCase().includes(q));
     const playable = (c) => R.libraryFilter(c, identityCards);
     return allCards
@@ -532,6 +591,7 @@ export default function DeckBuilder({
         // cards in the API, so keep only each group's canonical printing. Their
         // art stays reachable through the deck panel's art picker.
         if (printings.get(c.id)?.base !== c) return false;
+        if (champStage) return legalChampions.includes(c) && matchQ(c);   // step 2 — legal champions only
         const isLegend = c.classification?.type === 'Legend';
         if (!hasLegend) return isLegend && matchQ(c);       // step 1 — legends only
         if (isLegend) return false;                         // step 2 — everything but legends
@@ -541,8 +601,9 @@ export default function DeckBuilder({
       })
       .map(c => ({ card: c, flagged: libShowAll && !playable(c) }))
       .sort((a, b) =>
-        (TYPE_ORDER[typeOf(a.card)] ?? 9) - (TYPE_ORDER[typeOf(b.card)] ?? 9) ||
+        setRank(a.card) - setRank(b.card) ||
         (a.card.attributes?.energy ?? 99) - (b.card.attributes?.energy ?? 99) ||
+        colorRank(a.card) - colorRank(b.card) ||
         a.card.name.localeCompare(b.card.name));
   }
   const libResults = computeLibResults();
@@ -551,6 +612,7 @@ export default function DeckBuilder({
   // set/removed) or the active deck changes, so a stale filter doesn't linger.
   const resetLibFilters = useCallback(() => {
     setLibFilter(''); setLibType(''); setLibShowAll(false); setLibBrowseIdentity(false);
+    setLibPickChampion(false); setChampSkipped(false);
   }, []);
 
   // How many copies of a card the active deck already holds (across every zone,
@@ -780,9 +842,14 @@ export default function DeckBuilder({
     const chosen = active.championId === card.id;
     const tag = active.tags[card.id];
     const art = artOf(card);
+    const isPicked = picked?.zone === zone && picked?.key === key;
     return (
-      <div key={key} className={`db-mini-tile${missing ? ' short' : ''}${chosen ? ' chosen' : ''}`}>
-        <button className="db-mini-tile-art" onClick={() => onOpenModal?.(card)} title={card.name}>
+      <div key={key} className={`db-mini-tile${missing ? ' short' : ''}${chosen ? ' chosen' : ''}${isPicked ? ' picked' : ''}`}>
+        <button
+          className="db-mini-tile-art"
+          onClick={() => (isMobile ? setPicked(isPicked ? null : { cardId: card.id, zone, key }) : onOpenModal?.(card))}
+          title={card.name}
+        >
           {art.media?.image_url
             ? <img src={art.media.image_url} alt={card.name} loading="lazy" />
             : <span className="db-lib-ph">{card.name}</span>}
@@ -831,21 +898,26 @@ export default function DeckBuilder({
     const inDeck = qtyInDeck(card.id);
     const isLegend = card.classification?.type === 'Legend';
     // A legend that isn't in the deck is still blocked once the identity is full.
-    const atCap = inDeck >= deckCap(card) || (isLegend && multi && inDeck === 0 && identityComplete);
+    const atCap = !champStage && (inDeck >= deckCap(card) || (isLegend && multi && inDeck === 0 && identityComplete));
     const kind = R.typeOf(card);
     return (
       <button
         key={card.id}
-        className={`db-lib-tile${inDeck > 0 ? ' in-deck' : ''}${atCap ? ' at-cap' : ''}${flagged ? ' flagged' : ''}`}
-        onClick={() => addCard(card)}
+        className={`db-lib-tile${inDeck > 0 ? ' in-deck' : ''}${atCap ? ' at-cap' : ''}${flagged ? ' flagged' : ''}${champStage && active.championId === card.id ? ' chosen' : ''}`}
+        onClick={() => {
+          if (champStage) { pickChampion(card); if (isMobile) flashToast(`Chosen champion: ${card.name}`); return; }
+          addCard(card); if (isMobile) flashToast(`Added ${card.name}`);
+        }}
         disabled={atCap}
-        title={atCap ? `${card.name} — at max (${deckCap(card)})` : `Add ${card.name}`}
+        title={champStage ? `Choose ${card.name} as your champion` : atCap ? `${card.name} — at max (${deckCap(card)})` : `Add ${card.name}`}
       >
         <span className="db-lib-art">
           {card.media?.image_url
             ? <img src={card.media.image_url} alt={card.name} loading="lazy" />
             : <span className="db-lib-ph">{card.name}</span>}
-          {inDeck > 0 && <span className="db-lib-count">{isLegend ? '✓' : `×${inDeck}`}</span>}
+          {champStage && active.championId === card.id
+            ? <span className="db-lib-count">★ Chosen</span>
+            : inDeck > 0 && <span className="db-lib-count">{isLegend ? '✓' : `×${inDeck}`}</span>}
           {flagged && <span className="db-lib-flag" title="Outside your legends' budget">{R.libraryFilterBadge}</span>}
           {!atCap && <span className="db-lib-add">＋</span>}
         </span>
@@ -1013,8 +1085,14 @@ export default function DeckBuilder({
 
   if (!active) return renderGallery();
 
+  // Phones: action bar for the tapped deck tile (cleared once that card
+  // leaves the zone).
+  const pickedCard = picked ? cardById.get(picked.cardId) : null;
+  const pickedQty = picked ? (active[picked.zone]?.[picked.cardId] ?? 0) : 0;
+  const pickedLive = isMobile && mobilePane === 'deck' && pickedCard && pickedQty > 0;
+
   return (
-    <div className="db-wrap">
+    <div className={`db-wrap m-pane-${mobilePane}`}>
       {/* ── Builder ── */}
       <div className="db-editor">
         <div className="db-editor-head">
@@ -1030,6 +1108,16 @@ export default function DeckBuilder({
           </div>
         </div>
 
+          {/* Phones: switch between the library and the deck */}
+          {isMobile && (
+            <div className="db-mobile-switch seg">
+              <button className={mobilePane === 'cards' ? 'active' : ''} onClick={() => setMobilePane('cards')}>Cards</button>
+              <button className={mobilePane === 'deck' ? 'active' : ''} onClick={() => { setMobilePane('deck'); setPicked(null); }}>
+                Deck <span className="db-mobile-count">{analysis.mainCount}/{R.main.max}</span>
+              </button>
+            </div>
+          )}
+
           {/* View tabs: browse the library, or dig into deck details */}
           <div className="db-view-tabs">
             <button className={`db-view-tab${view === 'build' ? ' active' : ''}`} onClick={() => setView('build')}>Build</button>
@@ -1040,9 +1128,16 @@ export default function DeckBuilder({
             /* ── Card library: step 1 pick a legend, step 2 add cards ── */
             <div className="db-library">
               <div className="db-lib-step">
-                {hasLegend ? (
+                {champStage ? (
                   <>
-                    <span className="db-lib-step-n">Step 2</span> {R.stepCopy.addCards}
+                    <span className="db-lib-step-n">Step 2</span> Choose your chosen champion — {/^[aeiou]/i.test([...identityTags][0] ?? '') ? 'an' : 'a'} {[...identityTags].join(' / ')} champion unit. It goes in your main deck.
+                    <button className="btn ghost db-champ-skip" onClick={() => { setChampSkipped(true); setLibPickChampion(false); setLibFilter(''); }}>
+                      {active.championId ? 'Back to cards' : 'Skip for now'}
+                    </button>
+                  </>
+                ) : hasLegend ? (
+                  <>
+                    <span className="db-lib-step-n">Step {R.hasChampion ? 3 : 2}</span> {R.stepCopy.addCards}
                     <span className="db-legend-domains">
                       {identityCards.flatMap(c => R.identityFactions(c)).map((dm, i) => (
                         <span key={`${dm}-${i}`} className="db-domain-pill" style={{ color: `var(--d-${factionKey(dm)})` }}>{dm}</span>
@@ -1057,7 +1152,7 @@ export default function DeckBuilder({
                 <input
                   className="db-lib-filter"
                   type="search"
-                  placeholder={hasLegend ? 'Filter cards by name or tag…' : 'Filter legends…'}
+                  placeholder={champStage ? 'Filter champions…' : hasLegend ? 'Filter cards by name or tag…' : 'Filter legends…'}
                   value={libFilter}
                   onChange={e => setLibFilter(e.target.value)}
                 />
@@ -1085,6 +1180,11 @@ export default function DeckBuilder({
                     {multi && (
                       <button className="db-lib-chip" onClick={() => setLibBrowseIdentity(true)}>{R.identity.label}</button>
                     )}
+                    {R.hasChampion && (
+                      <button className="db-lib-chip" onClick={() => { setLibPickChampion(true); setLibFilter(''); }}>
+                        {champion ? `Champion: ${champion.name}` : 'Choose champion'}
+                      </button>
+                    )}
                   </div>
                 )}
                 {!hasLegend && multi && identityComplete && (
@@ -1092,11 +1192,21 @@ export default function DeckBuilder({
                     <button className="db-lib-chip active" onClick={() => setLibBrowseIdentity(false)}>← Back to cards</button>
                   </div>
                 )}
-                <span className="db-lib-total">{libResults.length} {hasLegend ? 'cards' : 'legends'}</span>
+                <span className="db-lib-total">{libResults.length} {champStage ? (libResults.length === 1 ? 'champion' : 'champions') : hasLegend ? 'cards' : 'legends'}</span>
               </div>
               {libResults.length
-                ? <div className="db-lib-grid">{libResults.map(renderLibTile)}</div>
-                : <div className="db-zone-empty">No {hasLegend ? 'cards' : 'legends'} match — adjust the filter.</div>}
+                ? <div className="db-lib-grid">{libResults.flatMap((r, i) => {
+                    // A heading wherever a new set starts.
+                    const setId = r.card.set?.set_id;
+                    const head = i === 0 || libResults[i - 1].card.set?.set_id !== setId;
+                    const tile = renderLibTile(r);
+                    return head
+                      ? [<div key={`set-${setId}`} className="db-lib-set">{game.setLabels[setId] ?? setId ?? 'Other'}</div>, tile]
+                      : [tile];
+                  })}</div>
+                : <div className="db-zone-empty">{champStage && !libFilter
+                    ? <>No champion units match this legend yet. <button className="btn ghost" onClick={() => setChampSkipped(true)}>Continue without one</button></>
+                    : <>No {champStage ? 'champions' : hasLegend ? 'cards' : 'legends'} match — adjust the filter.</>}</div>}
             </div>
           ) : (
             /* ── Details: stats, matchups, siding, notes, change log ── */
@@ -1533,6 +1643,30 @@ export default function DeckBuilder({
           </div>
         </aside>
       )}
+
+      {pickedLive && (
+        <div className="db-action-bar" role="toolbar" aria-label={`${pickedCard.name} actions`}>
+          <div className="db-action-head">
+            <span className="db-action-name">{pickedCard.name}</span>
+            <span className="db-action-zone">{ZONE_LABEL[picked.zone]} · ×{pickedQty}</span>
+            <button className="db-action-close" onClick={() => setPicked(null)} aria-label="Close">✕</button>
+          </div>
+          <div className="db-action-btns">
+            <button className="btn" onClick={() => adjustZone(picked.zone, picked.cardId, -1)}>−1</button>
+            <button className="btn" onClick={() => adjustZone(picked.zone, picked.cardId, +1)}>+1</button>
+            {picked.zone !== 'main' && <button className="btn" onClick={() => moveCard(picked.cardId, picked.zone, 'main')}>→ Main</button>}
+            {picked.zone !== 'sideboard' && <button className="btn" onClick={() => moveCard(picked.cardId, picked.zone, 'sideboard')}>→ Side</button>}
+            {picked.zone !== 'bench' && <button className="btn" onClick={() => moveCard(picked.cardId, picked.zone, 'bench')}>→ Bench</button>}
+            <select className="db-tag-select" value={active.tags[picked.cardId] ?? ''} onChange={(e) => setTag(picked.cardId, e.target.value)} aria-label="Tag">
+              <option value="">🏷 Tag…</option>
+              {TAGS.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <button className="btn ghost" onClick={() => onOpenModal?.(pickedCard)}>Details</button>
+          </div>
+        </div>
+      )}
+
+      {toast && isMobile && <div className="db-toast" role="status">{toast}</div>}
     </div>
   );
 }
