@@ -148,6 +148,12 @@
 .db-lib-chip.clear { color: var(--text-3); }
 .db-lib-total { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); }
 .db-lib-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+/* chosen-champion step */
+.db-champ-skip { margin-left: auto; flex-shrink: 0; }
+.db-lib-tile.chosen .db-lib-art { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+/* set heading spanning the library grid */
+.db-lib-set { grid-column: 1 / -1; margin-top: 6px; padding-bottom: 4px; border-bottom: 1px solid var(--border-0); font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); }
+.db-lib-set:first-child { margin-top: 0; }
 .db-lib-tile { display: flex; flex-direction: column; gap: 5px; padding: 0; background: none; border: none; text-align: left; cursor: pointer; }
 .db-lib-tile:disabled { cursor: default; }
 .db-lib-art { position: relative; aspect-ratio: 5 / 7; border-radius: 6px; overflow: hidden; background: var(--bg-2); border: 1px solid var(--border-0); display: block; }
