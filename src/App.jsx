@@ -10,6 +10,7 @@ import UpdateToast from './components/UpdateToast';
 import SetPicker from './components/SetPicker';
 import Decks from './pages/Decks';
 import Export from './pages/Export';
+import SetEntry from './pages/SetEntry';
 import TradeBinder from './pages/TradeBinder';
 import Shopping from './pages/Shopping';
 import Stats from './pages/Stats';
@@ -159,7 +160,7 @@ const NAV_ICONS = {
 // Top-level tabs group related pages; each page keeps its own id in `tab`.
 // Groups with several pages show a sub-tab switcher above the content.
 const NAV = [
-  { id: 'collection', label: 'Collection', pages: [['collection', 'Cards'], ['stats', 'Stats'], ['shopping', 'Shopping List']] },
+  { id: 'collection', label: 'Collection', pages: [['collection', 'Cards'], ['entry', 'Set Entry'], ['stats', 'Stats'], ['shopping', 'Shopping List']] },
   { id: 'trade', label: 'Trade', pages: [['trade', 'Binder'], ['friends', 'Friends'], ['merchant', 'Merchant']] },
   { id: 'decks', label: 'Decks', pages: [['decks', 'Decks']] },
   { id: 'export', label: 'Export', pages: [['export', 'Export']] },
@@ -696,7 +697,17 @@ function GameApp({ game, onSwitchGame }) {
             </div>
           )}
           <div key={tab} className="page-enter">
-            {tab === 'decks' ? (
+            {tab === 'entry' ? (
+              <SetEntry
+                allCards={allCards}
+                collection={collection}
+                foilCollection={foilCollection}
+                onAdjust={adjust}
+                onAdjustFoil={adjustFoil}
+                promoByName={promoByName}
+                promoShortLabels={game.promoShortLabels}
+              />
+            ) : tab === 'decks' ? (
               <Decks
                 allCards={allCards}
                 collection={collection}
