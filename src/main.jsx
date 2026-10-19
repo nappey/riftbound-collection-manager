@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
 import { applyTheme, loadThemeId } from './themes'
+// Phone layout last, so it overrides desktop and theme styles.
+import './mobile.css'
 
 // Before the first render, so the saved theme shows without a flash.
 applyTheme(loadThemeId())

@@ -1,0 +1,237 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   Phone layout (≤ 720px — keep in sync with MOBILE_QUERY in
+   hooks/useIsMobile.js). Loaded last so it overrides the desktop and theme
+   layouts. The Electron window never gets this narrow, so this only affects
+   the web app on phones.
+
+   • Header: brand mark, game switch and settings on one row; search below.
+   • Sections move to a bottom tab bar (safe-area aware).
+   • Filters open in a bottom sheet; stats sit in a strip above the cards.
+   • Two-column card grid with touch-sized controls; full-screen card sheet.
+   • Theme backdrops keep their color but drop the big set pieces.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 720px) {
+  :root {
+    --header-h: 104px;
+    --subnav-h: 0px;
+    --mbar-h: calc(62px + env(safe-area-inset-bottom));
+  }
+
+  /* ── Header: two rows ── */
+  .app { grid-template-rows: var(--header-h) 1fr; }
+  .app-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "brand right" "search search";
+    gap: 8px 10px;
+    padding: calc(8px + env(safe-area-inset-top)) 12px 10px;
+    height: calc(var(--header-h) + env(safe-area-inset-top));
+    align-content: center;
+  }
+  .brand { grid-area: brand; min-width: 0; gap: 10px; }
+  .brand-name { display: none; }
+  .global-search { grid-area: search; }
+  .global-search input { height: 38px; font-size: 16px; } /* 16px stops iOS zooming on focus */
+  .header-right { grid-area: right; gap: 4px; }
+  .header-csv { display: none; }
+  .header-right .btn-sq { width: 38px; height: 38px; }
+  .game-switch { margin-left: 0; }
+  .game-switch button { height: 30px; padding: 0 10px; }
+
+  /* ── Bottom tab bar ── */
+  .subnav {
+    position: fixed; top: auto; left: 0; right: 0; bottom: 0;
+    height: var(--mbar-h);
+    padding: 6px 10px calc(6px + env(safe-area-inset-bottom));
+    z-index: 40;
+    pointer-events: auto;
+    background: color-mix(in oklch, var(--bg-0) 90%, transparent);
+    backdrop-filter: blur(16px);
+    border-top: 1px solid var(--border-0);
+  }
+  .subnav .stats-row { display: none; }
+  .subnav .nav-dock {
+    flex: 1; width: 100%; height: 50px; padding: 3px; gap: 2px;
+    justify-content: space-between;
+  }
+  .subnav .nav-dock .sliding-tab {
+    flex: 1; height: 100%; padding: 0 2px;
+    flex-direction: column; justify-content: center; gap: 3px;
+    font-size: 10.5px; letter-spacing: 0.02em;
+  }
+  .subnav .nav-dock .sliding-tab .tab-icon { width: 19px; height: 19px; }
+  .subnav .nav-dock .sliding-tab-badge { display: none; }
+  .subnav .nav-dock .sliding-tabs-glider::after { display: none; }
+
+  /* ── Content area ── */
+  .main { grid-template-columns: 1fr; }
+  .content {
+    padding: 14px 12px calc(var(--mbar-h) + 24px);
+    max-height: calc(100dvh - var(--header-h) - env(safe-area-inset-top));
+    -webkit-overflow-scrolling: touch;
+  }
+  .page-subnav { margin-bottom: 14px; overflow-x: auto; scrollbar-width: none; }
+  .page-subnav::-webkit-scrollbar { display: none; }
+  .sub-tabs { height: 38px; }
+  .sub-tabs .sliding-tab { padding: 0 14px; font-size: 13px; }
+
+  /* stats strip above the cards */
+  .mobile-stats { margin-bottom: 12px; }
+  .mobile-stats .stats-row { display: flex; width: 100%; height: 44px; }
+  .mobile-stats .stat { flex: 1; flex-direction: column; justify-content: center; align-items: center; gap: 1px; padding: 0 6px; }
+  .mobile-stats .stat .stat-label { font-size: 9px; }
+  .mobile-stats .stat .stat-value { font-size: 13px; }
+
+  /* set progress: stack logo, counts and legend */
+  .set-progress { grid-template-columns: 1fr; padding: 12px 14px; gap: 10px; }
+  .set-progress-head { flex-wrap: wrap; }
+  .set-progress-head .set-logo { max-height: 30px; }
+  .set-progress-sub { white-space: normal; }
+  .progress-legend { flex-wrap: wrap; gap: 6px 12px; font-size: 11.5px; }
+
+  /* filters button + toolbar */
+  .content-toolbar { gap: 8px; flex-wrap: wrap; }
+  .mobile-filter-btn { height: 34px; gap: 6px; }
+  .mobile-filter-count {
+    min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+    display: inline-grid; place-items: center;
+    font-size: 10.5px; font-weight: 700; background: var(--accent); color: var(--on-accent);
+  }
+  .active-filters { flex: 1; min-width: 0; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
+
+  /* ── Cards: two columns, touch-sized controls ── */
+  .card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .card-cell { font-size: 12px; }
+  .card-body { padding: 8px; gap: 8px; }
+  .counter-row { flex-direction: column; align-items: stretch; }
+  .stepper { height: 34px; }
+  .stepper button { width: 36px; }
+  .stepper .val { white-space: nowrap; font-size: 13px; }
+  .card-trade-row .tag-btn { height: 32px; }
+  .promo-row { gap: 6px; }
+
+  /* ── Bottom sheet (filters) ── */
+  .sheet-backdrop {
+    position: fixed; inset: 0; z-index: 90;
+    background: oklch(0 0 0 / 0.55);
+    display: flex; align-items: flex-end;
+    animation: fadeIn 0.15s ease;
+  }
+  .filter-sheet {
+    width: 100%; max-height: 82dvh; overflow-y: auto;
+    background: var(--bg-1);
+    border-top: 1px solid var(--border-1);
+    border-radius: 16px 16px 0 0;
+    padding: 0 14px calc(18px + env(safe-area-inset-bottom));
+    animation: sheet-up 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .sheet-head {
+    position: sticky; top: 0; z-index: 1;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 0 10px; background: var(--bg-1);
+  }
+  .sheet-head b { font-size: 15px; }
+  .sheet-grip { position: absolute; top: 7px; left: 50%; translate: -50% 0; width: 38px; height: 4px; border-radius: 4px; background: var(--border-1); }
+  .filter-sheet .sidebar { position: static; max-height: none; border: none; padding: 0; background: transparent; overflow: visible; }
+  @keyframes sheet-up { from { transform: translateY(100%); } to { transform: none; } }
+
+  /* ── Card popup: full-screen sheet ── */
+  .modal-backdrop { padding: 0; place-items: stretch; }
+  .card-modal {
+    max-width: none; max-height: none; height: 100dvh;
+    border-radius: 0; border: none;
+    grid-template-columns: 1fr; grid-template-rows: auto 1fr;
+    overflow-y: auto;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .modal-img-col { max-height: 46dvh; }
+  .modal-close { top: calc(10px + env(safe-area-inset-top)); width: 38px; height: 38px; }
+
+  /* ── Pages ── */
+  .trade-intro h1, .stats-title, .shop-head h1, .tm-intro h1 { font-size: 22px; }
+  .friends-row { grid-template-columns: 34px 1fr 96px 70px; }
+  .friends-browse-head { flex-direction: column; align-items: stretch; }
+  .friends-browse-head .trade-col-actions { flex-wrap: wrap; }
+  .friends-search { width: 100%; }
+  .shop-head { flex-direction: column; gap: 10px; }
+  .shop-summary { width: 100%; }
+  .shop-stat { flex: 1; min-width: 0; padding: 8px 10px; text-align: left; }
+  .shop-stat-value { font-size: 16px; }
+  .shop-toolbar { flex-wrap: wrap; }
+  .shop-toolbar .seg { flex-wrap: wrap; }
+  .settings-page { gap: 12px; }
+  .settings-row { flex-wrap: wrap; }
+  .theme-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .export-wrap, .deck-check-wrap, .db-wrap { gap: 14px; }
+
+  /* ── Deck builder: one pane at a time ── */
+  .db-wrap { grid-template-columns: 1fr; gap: 12px; }
+  .db-wrap.m-pane-cards > .db-deck-panel { display: none; }
+  .db-wrap.m-pane-deck > .db-editor > :not(.db-editor-head):not(.db-mobile-switch) { display: none; }
+  .db-mobile-switch { display: flex; width: 100%; }
+  .db-mobile-switch button { flex: 1; height: 36px; font-size: 13px; }
+  .db-mobile-count { font-family: var(--font-mono); font-size: 11px; opacity: 0.75; margin-left: 4px; }
+  .db-editor-head { flex-wrap: wrap; gap: 8px; }
+  .db-editor-head .db-name-input { flex: 1 1 160px; min-width: 0; height: 36px; font-size: 16px; }
+  .db-head-actions { width: 100%; }
+  .db-head-actions .btn { flex: 1; justify-content: center; }
+  .db-lib-step { flex-wrap: wrap; line-height: 1.45; }
+  .db-champ-skip { margin-left: 0; }
+  .db-lib-toolbar { flex-wrap: wrap; }
+  .db-lib-filter { width: 100%; height: 38px; font-size: 16px; }
+  .db-lib-chips { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; padding-bottom: 2px; }
+  .db-lib-chip { flex-shrink: 0; height: 32px; }
+  .db-lib-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .db-lib-add { opacity: 1; width: 26px; height: 26px; }
+  .db-deck-panel { position: static; max-height: none; overflow: visible; padding-right: 0; }
+  .db-mini-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+  .db-mini-controls { display: none !important; }
+  .db-mini-tile.picked .db-mini-tile-art { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); transform: translateY(-2px); }
+  .db-panel-identity { flex-direction: column; }
+  .db-panel-export { flex-direction: column; }
+  .db-panel-export .btn { width: 100%; justify-content: center; height: 38px; }
+  .db-gallery-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .db-gallery-head { flex-wrap: wrap; }
+  .db-stats-grid { grid-template-columns: 1fr; }
+
+  /* action bar for the tapped deck card, above the tab bar */
+  .db-action-bar {
+    position: fixed; left: 8px; right: 8px; bottom: calc(var(--mbar-h) + 8px); z-index: 45;
+    display: flex; flex-direction: column; gap: 8px; padding: 10px 12px;
+    background: var(--bg-1); border: 1px solid var(--accent-line); border-radius: 14px;
+    box-shadow: 0 12px 30px oklch(0 0 0 / 0.55);
+    animation: sheet-up 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .db-action-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .db-action-name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .db-action-zone { font-size: 11.5px; color: var(--text-3); white-space: nowrap; }
+  .db-action-close { margin-left: auto; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border-0); background: var(--bg-2); color: var(--text-1); }
+  .db-action-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+  .db-action-btns .btn { height: 36px; padding: 0 12px; }
+  .db-action-btns .db-tag-select { height: 36px; flex: 1 1 110px; font-size: 14px; border-radius: 8px; background: var(--bg-2); color: var(--text-0); border: 1px solid var(--border-0); padding: 0 8px; }
+  .db-wrap.m-pane-deck .db-deck-panel { padding-bottom: 150px; } /* room to scroll past the action bar */
+
+  /* "Added …" toast */
+  .db-toast {
+    position: fixed; left: 50%; bottom: calc(var(--mbar-h) + 14px); translate: -50% 0; z-index: 46;
+    max-width: calc(100% - 32px); padding: 9px 14px; border-radius: 999px;
+    background: var(--accent); color: var(--on-accent); font-size: 13px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    box-shadow: 0 8px 22px oklch(0 0 0 / 0.45);
+    animation: db-toast 1.6s ease forwards;
+  }
+  @keyframes db-toast { 0% { opacity: 0; transform: translateY(8px); } 12%, 80% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+
+  /* ── Theme backdrops: keep the mood, drop the set pieces ── */
+  :is(.p-window, .shp-gauge, .shp-pipes, .shp-pipe-right, .p-steam, .shp-gear-copper, .shp-gear-tiny,
+      .shp-hexgate, .shp-gear-small, .shp-crystal-b,
+      .z-graffiti, .z-pipes,
+      .n-banner, .n-spikes) { display: none !important; }
+  .shp-gear-big { width: 150px; height: 150px; top: auto; bottom: calc(var(--mbar-h) + 10px); right: -60px; opacity: 0.5; }
+  .shp-crystal-a { top: 18%; left: auto; right: 8%; }
+  .theme-art { width: 420px; height: 420px; right: -140px; top: -80px; }
+  .theme-sigil { width: 340px; height: 340px; right: -120px; top: -100px; }
+  .z-art { width: 100%; right: 0; top: 80px; height: 380px; }
+  .n-panorama { height: 320px; }
+  .theme-backdrop .shp, .z-art, .n-panorama { translate: none !important; }
+}
