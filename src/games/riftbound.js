@@ -176,6 +176,7 @@ const deck = {
   identity: { kind: 'single', label: 'Legend', max: 1 },
   hasChampion: true,
   hasRunes: true,
+  scoreToWin: 8, // victory score — the match tracker's default target
   hasBattlefields: true,
   main: { min: MAIN_TARGET, max: MAIN_TARGET },
   sideboardMax: SIDEBOARD_MAX,
