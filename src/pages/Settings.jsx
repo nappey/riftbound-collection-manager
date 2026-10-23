@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSync } from '../sync/SyncContext';
+import { useDiscord } from '../discord/DiscordContext';
 import CheckForUpdatesButton from '../components/CheckForUpdatesButton';
 import ExportButton from '../components/ExportButton';
 import ImportButton from '../components/ImportButton';
@@ -129,6 +130,78 @@ function SyncSection() {
   );
 }
 
+function DiscordSection() {
+  const discord = useDiscord();
+  const [key, setKey] = useState('');
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 15000);
+    return () => clearInterval(id);
+  }, []);
+
+  const { link, busy, notice } = discord;
+
+  if (!link) {
+    const submit = async (e) => {
+      e.preventDefault();
+      if (await discord.linkWithKey(key)) setKey('');
+    };
+    return (
+      <>
+        <p className="settings-note">
+          Shares your Riftbound collection counts and trade lists with the team Discord bot so people can find trades.
+        </p>
+        <form className="settings-row" onSubmit={submit}>
+          <span className="settings-label">Link key</span>
+          <input
+            className="settings-input"
+            value={key}
+            placeholder="Paste the link from /collection link"
+            onChange={(e) => setKey(e.target.value)}
+            spellCheck={false}
+            autoComplete="off"
+          />
+          <button className="btn primary" type="submit" disabled={!key.trim() || busy === 'linking'}>
+            {busy === 'linking' ? 'Linking…' : 'Link'}
+          </button>
+        </form>
+        {notice && <div className="settings-error">{notice}</div>}
+        <p className="settings-note small">
+          In Discord, run <b>/collection link</b> — the bot replies privately with a link key that works once, for 10 minutes.
+          Each device links separately.
+        </p>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div className="settings-row">
+        <span className="settings-label">Status</span>
+        <span className={`sync-status sync-status--${link.lastError ? 'error' : 'idle'}`}>
+          <span className="sync-dot" />
+          Linked as @{link.user?.name ?? 'unknown'}
+          <span className="muted">
+            {' · '}
+            {busy === 'sending' ? 'sending…'
+              : link.lastError ? link.lastError
+              : link.lastPushedAt ? `last sent ${timeAgo(link.lastPushedAt, now)}`
+              : discord.cardsReady ? 'not sent yet' : 'waiting for Riftbound cards to load'}
+          </span>
+        </span>
+      </div>
+      <div className="settings-actions">
+        <button className="btn" onClick={() => discord.sendNow()} disabled={!!busy || !discord.cardsReady}>Send now</button>
+        <button className="btn ghost danger" onClick={() => discord.unlink()} disabled={busy === 'unlinking'}>Unlink</button>
+      </div>
+      <p className="settings-note small">
+        Your Riftbound collection counts, Looking For and Up For Trade lists are sent to the bot whenever they change.
+        Decks and the Traveling Merchant aren't shared.
+      </p>
+    </>
+  );
+}
+
 function AppearanceSection() {
   const [current, setCurrent] = useState(loadThemeId);
   const pick = (id, e) => {
@@ -184,6 +257,11 @@ export default function Settings({ allCards, collection, foilCollection, onImpor
       <section className="settings-card">
         <h2>Sync between devices</h2>
         <SyncSection />
+      </section>
+
+      <section className="settings-card">
+        <h2>Discord</h2>
+        <DiscordSection />
       </section>
 
       <section className="settings-card">

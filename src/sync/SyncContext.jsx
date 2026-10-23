@@ -39,6 +39,12 @@ export function SyncProvider({ children }) {
   const [pendingChoice, setPendingChoice] = useState(null);
   const [displayName, setDisplayNameState] = useState(getDisplayName);
   const [friends, setFriends] = useState([]);
+  // True once the startup sync has run (or there's nothing to sync), so
+  // consumers that push data elsewhere don't send a stale pre-sync copy.
+  const [startupDone, setStartupDone] = useState(!api);
+  // Bumps whenever local data is replaced wholesale — another device's
+  // snapshot loaded (at = its savedAt) or a load undone (at = now).
+  const [dataReplaced, setDataReplaced] = useState(null); // { at, seq }
 
   const configRef = useRef(null);
   const timer = useRef(null);
@@ -93,6 +99,7 @@ export function SyncProvider({ children }) {
     writeMeta({ lastAppliedAt: snap.savedAt });
     setBackupAvailable(true);
     setDataVersion((v) => v + 1);
+    setDataReplaced((r) => ({ at: snap.savedAt, seq: (r?.seq ?? 0) + 1 }));
     setStatus('loaded');
     setLastSyncAt(snap.savedAt);
     setError(null);
@@ -142,11 +149,11 @@ export function SyncProvider({ children }) {
   useEffect(() => {
     if (!api) return;
     let alive = true;
-    api.getConfig().then((cfg) => {
+    api.getConfig().then(async (cfg) => {
       if (!alive) return;
       setConfig(cfg);
-      if (cfg?.path) { reconcile(); refreshFriends(); }
-    }).catch(fail);
+      if (cfg?.path) { refreshFriends(); await reconcile(); }
+    }).catch(fail).finally(() => { if (alive) setStartupDone(true); });
     return () => { alive = false; };
   }, [api, setConfig, reconcile, refreshFriends, fail]);
 
@@ -230,6 +237,7 @@ export function SyncProvider({ children }) {
     setDisplayNameState(getDisplayName());
     setBackupAvailable(false);
     setDataVersion((v) => v + 1);
+    setDataReplaced((r) => ({ at: Date.now(), seq: (r?.seq ?? 0) + 1 }));
     dirtyAt.current = Date.now();
     await save(); // the restored data becomes the newest version everywhere
   }, [save]);
@@ -245,10 +253,11 @@ export function SyncProvider({ children }) {
   const value = useMemo(() => ({
     available: !!api,
     config, status, error, lastSyncAt, dataVersion, backupAvailable, pendingChoice, displayName, friends,
+    startupDone, dataReplaced,
     scheduleSave, syncNow: reconcile, chooseFile, resolveChoice, disable, setCsvCopy, undoLastLoad, setCsvWriter,
     setDisplayName, refreshFriends,
   }), [api, config, status, error, lastSyncAt, dataVersion, backupAvailable, pendingChoice, displayName, friends,
-    scheduleSave, reconcile, chooseFile, resolveChoice, disable, setCsvCopy, undoLastLoad, setCsvWriter,
+    startupDone, dataReplaced, scheduleSave, reconcile, chooseFile, resolveChoice, disable, setCsvCopy, undoLastLoad, setCsvWriter,
     setDisplayName, refreshFriends]);
 
   return <SyncContext.Provider value={value}>{children}</SyncContext.Provider>;

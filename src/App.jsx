@@ -22,6 +22,7 @@ import ThemeBackdrop from './components/ThemeBackdrop';
 import SlidingTabs from './components/SlidingTabs';
 import { useIsMobile } from './hooks/useIsMobile';
 import { SyncProvider, useSync } from './sync/SyncContext';
+import { DiscordProvider, useDiscord } from './discord/DiscordContext';
 import { GAMES, GAME_IDS, DEFAULT_GAME, getGame } from './games';
 import { GameContext } from './games/GameContext';
 import { storageKeys, ACTIVE_GAME_KEY } from './games/storage';
@@ -29,6 +30,7 @@ import { getCached, setCached, loadStoredCards, storeCards } from './games/cardC
 import MerchantBtn from './components/MerchantBtn';
 import { completePrices } from './utils/analysis';
 import { remapKeys, remapDecks, remapMerchant } from './utils/remapIds';
+import logoUrl from './assets/logo.png';
 import './App.css';
 import './pages.css';
 
@@ -239,10 +241,12 @@ export default function App() {
   const game = getGame(gameId);
   return (
     <SyncProvider>
-      <ThemeBackdrop />
-      <GameContext.Provider value={game}>
-        <SyncedGameApp game={game} onSwitchGame={setGameId} />
-      </GameContext.Provider>
+      <DiscordProvider>
+        <ThemeBackdrop />
+        <GameContext.Provider value={game}>
+          <SyncedGameApp game={game} onSwitchGame={setGameId} />
+        </GameContext.Provider>
+      </DiscordProvider>
     </SyncProvider>
   );
 }
@@ -315,6 +319,8 @@ function GameApp({ game, onSwitchGame }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [loading, setLoading] = useState(() => !cached?.cards);
   const [error, setError] = useState(null);
+  // Discord bot link: gets the Riftbound card list and edit notifications.
+  const { noteLocalEdit, setRiftboundCards } = useDiscord();
 
   useEffect(() => {
     const have = getCached(game.id);
@@ -336,6 +342,7 @@ function GameApp({ game, onSwitchGame }) {
           fresh = true;
           setCached(game.id, { cards });
           storeCards(game.id, cards);
+          if (game.id === 'riftbound') setRiftboundCards(cards);
           setAllCards(cards);
           setLoading(false);
         })
@@ -350,7 +357,7 @@ function GameApp({ game, onSwitchGame }) {
         .then((raw) => { const map = completePrices(raw); setCached(game.id, { prices: map }); setPrices(map); setPricesLoading(false); })
         .catch(() => setPricesLoading(false));
     }
-  }, [game, TCGCSV_BASE, idMap]);
+  }, [game, TCGCSV_BASE, idMap, setRiftboundCards]);
 
   // Netdeck serves signed image URLs that expire after a few hours. When the
   // window comes back into focus after a long idle, silently refetch the card
@@ -388,17 +395,26 @@ function GameApp({ game, onSwitchGame }) {
     if (!modalCard) return [];
     return friends.flatMap((f) => {
       const g = f.games?.[game.id];
-      const normal = g?.collection?.[modalCard.id] ?? 0;
-      const foil = g?.foil?.[modalCard.id] ?? 0;
+      // Friends on older versions may still use legacy card ids.
+      const normal = remapKeys(g?.collection ?? {}, idMap)[modalCard.id] ?? 0;
+      const foil = remapKeys(g?.foil ?? {}, idMap)[modalCard.id] ?? 0;
       return normal + foil > 0 ? [{ id: f.id, name: f.name, normal, foil }] : [];
     });
-  }, [modalCard, friends, game.id]);
+  }, [modalCard, friends, game.id, idMap]);
 
   const syncMounted = useRef(false);
   useEffect(() => {
     if (!syncMounted.current) { syncMounted.current = true; return; }
     scheduleSave();
   }, [scheduleSave, collection, foilCollection, lookingFor, upForTrade, decks, merchant, vendorName]);
+
+  // Discord bot link: Riftbound counts / trade-list edits trigger a (debounced)
+  // push. Same mount skip as above. Decks and the Merchant aren't sent.
+  const discordMounted = useRef(false);
+  useEffect(() => {
+    if (!discordMounted.current) { discordMounted.current = true; return; }
+    if (game.id === 'riftbound') noteLocalEdit();
+  }, [noteLocalEdit, game.id, collection, foilCollection, lookingFor, upForTrade]);
   useEffect(() => {
     setCsvWriter(allCards.length
       ? () => window.__electron__?.sync?.writeCsv(game.id, game.csv.generate(allCards, collection, foilCollection))
@@ -631,7 +647,7 @@ function GameApp({ game, onSwitchGame }) {
       {/* ── Header ── */}
       <header className="app-header">
         <div className="brand">
-          <div className="brand-mark"></div>
+          <img className="brand-mark" src={logoUrl} alt="" />
           <div className="brand-name">
             Card Manager <span className="muted">/ {game.label}</span>
           </div>
