@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Riftbound Thumbnail Maker</title>
+<meta name="description" content="Make a 1280×720 YouTube thumbnail for a Riftbound match: two legend images, player names and VS. Runs entirely in your browser." />
+<link rel="icon" type="image/png" href="../favicon.png" />
+<link rel="stylesheet" href="../style.css" />
+<link rel="stylesheet" href="thumbnail.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="brand">Riftbound <span class="muted">/ Thumbnail Maker</span></div>
+    <nav class="header-actions">
+      <a class="btn ghost" href="../">Set Entry</a>
+      <button id="btn-copy" class="btn" title="Copy the thumbnail image to the clipboard">Copy image</button>
+      <button id="btn-download" class="btn primary" title="Download a 1280×720 PNG">Download PNG</button>
+    </nav>
+  </header>
+
+  <main class="tm">
+    <section class="tm-stage">
+      <div class="tm-canvas-wrap" id="canvas-wrap">
+        <canvas id="thumb" width="1280" height="720" aria-label="Thumbnail preview"></canvas>
+        <div class="tm-drop-hint" id="drop-hint" hidden><span>Drop to place on the <b id="drop-side">left</b></span></div>
+      </div>
+      <p class="tm-hint">Drag an image to move it · scroll (or use the slider) to zoom · drop image files onto either side. Nothing leaves your computer.</p>
+    </section>
+
+    <aside class="tm-panel">
+      <fieldset class="tm-group">
+        <legend>Presets</legend>
+        <div class="tm-presets" id="presets"></div>
+      </fieldset>
+
+      <fieldset class="tm-group">
+        <legend>Team logo</legend>
+        <div class="tm-side-head">
+          <span class="tm-logo-thumb" id="logo-thumb">None</span>
+          <label class="btn" for="logo-file">Choose logo…</label>
+          <input type="file" id="logo-file" accept="image/*" hidden />
+          <button class="btn ghost" id="logo-clear" hidden>Remove</button>
+        </div>
+        <label class="tm-field">Position
+          <select id="logo-pos">
+            <option value="center">Middle (replaces VS)</option>
+            <option value="top">Top center</option>
+            <option value="bottom">Bottom center</option>
+            <option value="top-left">Top left</option>
+            <option value="top-right">Top right</option>
+            <option value="bottom-left">Bottom left</option>
+            <option value="bottom-right">Bottom right</option>
+          </select>
+        </label>
+        <label class="tm-field tm-inline">Size <input type="range" id="logo-size" min="60" max="260" step="2" value="130" /></label>
+      </fieldset>
+
+      <fieldset class="tm-group">
+        <legend>Legends</legend>
+        <div class="tm-side" data-side="left">
+          <div class="tm-side-head">
+            <span>Left</span>
+            <label class="btn" for="img-left">Choose image…</label>
+            <input type="file" id="img-left" accept="image/*" hidden />
+            <button class="btn ghost tm-clear" data-clear="left" hidden>Remove</button>
+          </div>
+          <label class="tm-field tm-inline">Zoom <input type="range" id="zoom-left" min="1" max="3" step="0.01" value="1" /></label>
+          <label class="tm-check"><input type="checkbox" id="flip-left" /> Mirror</label>
+        </div>
+        <div class="tm-side" data-side="right">
+          <div class="tm-side-head">
+            <span>Right</span>
+            <label class="btn" for="img-right">Choose image…</label>
+            <input type="file" id="img-right" accept="image/*" hidden />
+            <button class="btn ghost tm-clear" data-clear="right" hidden>Remove</button>
+          </div>
+          <label class="tm-field tm-inline">Zoom <input type="range" id="zoom-right" min="1" max="3" step="0.01" value="1" /></label>
+          <label class="tm-check"><input type="checkbox" id="flip-right" /> Mirror</label>
+        </div>
+      </fieldset>
+
+      <fieldset class="tm-group">
+        <legend>Players</legend>
+        <label class="tm-field">Left player <input type="text" id="p1" maxlength="40" value="Player One" /></label>
+        <label class="tm-field">Right player <input type="text" id="p2" maxlength="40" value="Player Two" /></label>
+        <label class="tm-field">Middle word <input type="text" id="vs" maxlength="6" value="VS" /></label>
+        <label class="tm-field">Event line (optional) <input type="text" id="event" maxlength="60" placeholder="e.g. Radiance Launch · Top 8" /></label>
+      </fieldset>
+
+      <fieldset class="tm-group">
+        <legend>Font</legend>
+        <label class="tm-field">Family
+          <select id="font-select"></select>
+        </label>
+        <label class="tm-field">…or type any installed font <input type="text" id="font-custom" placeholder="e.g. Bebas Neue" /></label>
+        <div class="tm-row">
+          <button class="btn" id="btn-local-fonts" type="button">Use my installed fonts</button>
+          <span class="tm-note" id="font-note"></span>
+        </div>
+        <div class="tm-row">
+          <label class="tm-check"><input type="checkbox" id="bold" checked /> Bold</label>
+          <label class="tm-check"><input type="checkbox" id="italic" /> Italic</label>
+          <label class="tm-check"><input type="checkbox" id="upper" checked /> UPPERCASE</label>
+        </div>
+      </fieldset>
+
+      <fieldset class="tm-group">
+        <legend>Colors</legend>
+        <div class="tm-colors">
+          <label>Names <input type="color" id="c-text" value="#ffffff" /></label>
+          <label>VS <input type="color" id="c-vs" value="#ffc23d" /></label>
+          <label>Accent <input type="color" id="c-accent" value="#3d9bff" /></label>
+          <label>Background <input type="color" id="c-bg" value="#0b1020" /></label>
+          <label>Outline <input type="color" id="c-stroke" value="#05070f" /></label>
+        </div>
+        <label class="tm-field tm-inline">Outline width <input type="range" id="stroke" min="0" max="16" step="1" value="8" /></label>
+        <label class="tm-check"><input type="checkbox" id="glow" checked /> Glow</label>
+      </fieldset>
+
+      <button class="btn ghost" id="btn-reset" type="button">Reset everything</button>
+    </aside>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <footer class="site-footer">
+    Unofficial fan tool · images you add stay in this browser · not endorsed by Riot Games.
+  </footer>
+
+  <script type="module" src="thumbnail.js"></script>
+</body>
+</html>
