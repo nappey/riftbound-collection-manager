@@ -42,25 +42,11 @@
 }
 
 .brand-mark {
-  width: 26px;
-  height: 26px;
-  border-radius: 7px;
-  background: var(--bg-2);
-  border: 1px solid var(--border-1);
-  display: grid;
-  place-items: center;
-  position: relative;
-  overflow: hidden;
-}
-
-.brand-mark::before {
-  content: "";
-  position: absolute;
-  inset: 4px;
-  border-radius: 3px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  opacity: 0.85;
-  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  object-fit: contain;
+  display: block;
 }
 
 .brand-name {

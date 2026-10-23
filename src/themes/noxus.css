@@ -156,8 +156,6 @@ html[data-theme="noxus"] body {
   border-bottom: 2px solid var(--nx-crimson);
   box-shadow: 0 1px 0 var(--nx-gold), 0 8px 24px oklch(0 0 0 / 0.5);
 }
-[data-theme="noxus"] .brand-mark { border-color: var(--nx-gold); border-radius: 1px; background: var(--nx-blood); }
-[data-theme="noxus"] .brand-mark::before { background: var(--nx-gold); }
 
 /* ── Iron and crimson controls ── */
 [data-theme="noxus"] .btn { border-radius: 2px; border-color: var(--border-1); transition: border-color 0.15s, background 0.15s, color 0.15s; }

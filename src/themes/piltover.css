@@ -202,8 +202,6 @@ html[data-theme="piltover"] body {
   border-bottom: 2px solid var(--pv-line);
   box-shadow: 0 2px 0 #5c4114, 0 6px 18px oklch(0 0 0 / 0.4);
 }
-[data-theme="piltover"] .brand-mark { border: 1.5px solid var(--pv-line); border-radius: 50%; background: var(--bg-2); }
-[data-theme="piltover"] .brand-mark::before { background: var(--pv-hex); opacity: 1; inset: 5px; filter: drop-shadow(0 0 4px var(--pv-hex)); }
 [data-theme="piltover"] .global-search input { background: var(--bg-1); border: 1.5px solid var(--pv-line); border-radius: 4px; }
 [data-theme="piltover"] .global-search input:focus { outline: none; border-color: var(--pv-hex); box-shadow: 0 0 0 3px color-mix(in srgb, var(--pv-hex) 25%, transparent); }
 

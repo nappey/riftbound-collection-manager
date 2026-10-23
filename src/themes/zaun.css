@@ -162,8 +162,6 @@ html[data-theme="zaun"] body {
   border-bottom: 1px solid color-mix(in srgb, var(--z-green) 30%, transparent);
   box-shadow: 0 1px 18px color-mix(in srgb, var(--z-green) 10%, transparent);
 }
-[data-theme="zaun"] .brand-mark { border-color: var(--z-green); box-shadow: 0 0 10px var(--accent-glow); animation: z-flicker 7s infinite; }
-[data-theme="zaun"] .brand-mark::before { background: linear-gradient(135deg, var(--z-green), var(--z-purple)); }
 
 /* ── Neon: buttons and segmented controls ── */
 [data-theme="zaun"] .btn { border-color: color-mix(in srgb, var(--z-green) 22%, var(--border-0)); transition: border-color 0.2s, box-shadow 0.2s, color 0.2s, background 0.2s; }
