@@ -4,6 +4,7 @@ import { useSync } from '../sync/SyncContext';
 import { timeAgo } from '../sync/timeAgo';
 import { cardTarget, ownedTotal, unitPrice, fmt$ } from '../utils/analysis';
 import { formatPlaysetFor } from '../utils/playset';
+import { remapKeys } from '../utils/remapIds';
 
 // Friends: collections of the other people whose sync files share your sync
 // folder (read-only). Shows trade matches both ways, then lets you browse
@@ -107,10 +108,12 @@ export default function Friends({
 
   const friend = friends.find((f) => f.id === selectedId) ?? friends[0] ?? null;
   const data = friend?.games?.[game.id] ?? EMPTY;
-  const theirs = data.collection ?? EMPTY;
-  const theirFoil = data.foil ?? EMPTY;
-  const theirLF = data.lf ?? EMPTY;
-  const theirUFT = data.uft ?? EMPTY;
+  // A friend on an older version may still have cards saved under the game's
+  // legacy ids; re-key their data the same way App re-keys ours.
+  const { theirs, theirFoil, theirLF, theirUFT } = useMemo(() => {
+    const re = (v) => (game.idRemap ? remapKeys(v ?? EMPTY, game.idRemap) : v ?? EMPTY);
+    return { theirs: re(data.collection), theirFoil: re(data.foil), theirLF: re(data.lf), theirUFT: re(data.uft) };
+  }, [data, game.idRemap]);
 
   const sorted = useMemo(
     () => [...allCards].sort(bySetThenNumber(game.setOrder)),

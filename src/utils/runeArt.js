@@ -37,9 +37,12 @@ function elementOf(card) {
   return RUNE_BY_NAME[base] ?? null;
 }
 
-// Which printing an existing riftcodex rune card represents.
+// Which curated printing an existing rune card represents. Only Origins and
+// the OP (Nexus) promos have curated art; later sets' runes (Vendetta,
+// Radiance…) keep the official art from the card source.
 function riftcodexPrinting(card) {
   if (card.set?.set_id === 'OPP') return 'Nexus';
+  if (card.set?.set_id !== 'OGN') return null;
   if (card.metadata?.alternate_art) return 'Showcase';
   return 'Origins';
 }
@@ -71,7 +74,8 @@ export function augmentRunes(cards) {
     if (card.classification?.type !== 'Rune') return card;
     const e = elementOf(card);
     if (!e) return card;
-    const url = RUNE_IMG[`${e.el}-${riftcodexPrinting(card)}`];
+    const printing = riftcodexPrinting(card);
+    const url = printing && RUNE_IMG[`${e.el}-${printing}`];
     return url ? { ...card, media: { ...card.media, image_url: url } } : card;
   });
 

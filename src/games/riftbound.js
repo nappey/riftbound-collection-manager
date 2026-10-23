@@ -1,52 +1,80 @@
 // Riftbound (Riot's League of Legends TCG) — game config + data adapter.
-// Card data comes from riftcodex; prices and promo art from tcgcsv (category 89).
+// Card data comes from Riot's card gallery (promo sets from riftcodex); prices
+// and promo art from tcgcsv (category 89).
 import RiftText from '../components/RiftText';
 import { splitRiftParagraphs } from '../utils/riftText';
 import { dedupeCards } from '../utils/dedupeCards';
 import { fetchTcgProducts, augmentCards } from '../utils/tcgAugment';
 import { augmentRunes } from '../utils/runeArt';
+import { fetchRiotCards, enrichFromTcg } from './riotGallery';
 import { SET_LOGOS } from '../utils/setLogos';
 import { toCSV, buildRidMap, matchCSVRows } from '../utils/csvImport';
 import * as rules from './riftboundRules';
 import { defineGame } from './defineGame';
+import legacyIds from './riftboundLegacyIds.json';
 
 const API_BASE = 'https://api.riftcodex.com';
 const PAGE_SIZE = 100;
 
-async function fetchAllCards(onProgress) {
-  // no-store so new sets/cards always appear on launch instead of being served
-  // a stale cached response from disk.
-  const first = await fetch(`${API_BASE}/cards?size=${PAGE_SIZE}&page=1`, { cache: 'no-store' }).then((r) => {
+// Promo sets Riot's card gallery doesn't list — the only cards still taken
+// from riftcodex. They keep riftcodex's ids: their riftbound_ids aren't unique
+// (OPP's Metal promos share one with the base promo).
+const RIFTCODEX_SETS = ['OPP', 'PR', 'JDG'];
+
+// Pages through riftcodex's /cards, optionally for one set only.
+async function fetchRiftcodex(setId) {
+  const q = setId ? `set_id=${setId}&` : '';
+  const page = (p) => fetch(`${API_BASE}/cards?${q}size=${PAGE_SIZE}&page=${p}`, { cache: 'no-store' }).then((r) => {
     if (!r.ok) throw new Error(`API error: ${r.status}`);
     return r.json();
   });
-  let done = 1;
-  onProgress?.(done, first.pages);
-  const remaining = [];
-  for (let p = 2; p <= first.pages; p++) {
-    remaining.push(fetch(`${API_BASE}/cards?size=${PAGE_SIZE}&page=${p}`, { cache: 'no-store' }).then((r) => r.json()).then((d) => {
-      onProgress?.(++done, first.pages);
-      return d;
-    }));
-  }
-  const rest = await Promise.all(remaining);
+  const first = await page(1);
+  const rest = await Promise.all(Array.from({ length: Math.max(0, first.pages - 1) }, (_, i) => page(i + 2)));
   return [first, ...rest].flatMap((d) => d.items);
 }
 
-async function loadCards({ tcgcsvBase }, onProgress) {
-  let cards = await fetchAllCards(onProgress);
-  // The API re-ingests some sets (currently Vendetta), serving each card
-  // several times under different ids. Drop the ghosts before anything
-  // downstream counts or groups them.
-  cards = dedupeCards(cards);
+// Main-set cards are keyed by riftbound_id ("unl-229*-219"), the same in Riot
+// and riftcodex data; saved data from before the switch is migrated via
+// riftboundLegacyIds.json.
+const keyByRid = (cards) => cards.map((c) => ({ ...c, id: c.riftbound_id }));
+
+// Main sets come from Riot's card gallery (with tcgcsv product ids for
+// prices); if the gallery can't be loaded, from riftcodex instead.
+async function loadMainSets({ tcgcsvBase, riotBase }) {
+  const exclude = new Set(RIFTCODEX_SETS);
+  try {
+    const cards = await fetchRiotCards(riotBase, exclude);
+    if (!cards.length) throw new Error('no cards');
+    return await enrichFromTcg(cards, tcgcsvBase);
+  } catch (e) {
+    console.warn('[riot] gallery unavailable, using riftcodex:', e?.message ?? e);
+    // The API re-ingests some sets (currently Vendetta), serving each card
+    // several times under different ids — drop the ghosts first.
+    const all = dedupeCards(await fetchRiftcodex());
+    return keyByRid(all.filter((c) => !exclude.has(c.set?.set_id)));
+  }
+}
+
+async function loadPromoSets() {
+  const lists = await Promise.all(RIFTCODEX_SETS.map((s) => fetchRiftcodex(s).catch(() => [])));
+  return dedupeCards(lists.flat());
+}
+
+async function loadCards({ tcgcsvBase, riotBase }, onProgress) {
+  let done = 0;
+  const step = () => onProgress?.(++done, 2);
+  let [main, promos] = await Promise.all([
+    loadMainSets({ tcgcsvBase, riotBase }).finally(step),
+    loadPromoSets().finally(step),
+  ]);
   try {
     // Swap in the correct Arcane (PR) promo art (riftcodex serves the
     // base art for those).
     const tcg = await fetchTcgProducts(tcgcsvBase);
-    cards = augmentCards(cards, tcg);
-  } catch { /* tcgcsv unavailable — fall back to riftcodex data as-is */ }
+    promos = augmentCards(promos, tcg);
+  } catch { /* tcgcsv unavailable — keep riftcodex's promo art */ }
   // Curated rune art + missing rune printings (local images).
-  return augmentRunes(cards);
+  return augmentRunes([...main, ...promos]);
 }
 
 // ── Prices (tcgcsv groups → /prices) ───────────────────────────
@@ -307,6 +335,9 @@ export default defineGame({
   id: 'riftbound',
   label: 'Riftbound',
   api: { loadCards, imagesExpire: false },
+  // riftcodex id → riftbound_id for main-set cards saved before the switch to
+  // Riot's gallery; App and Friends re-key saved data through it on load.
+  idRemap: new Map(Object.entries(legacyIds)),
   prices: { tcgcsvCategory: 89, load: loadPrices },
   sets: rules.SETS,
   faction: { key: 'domain', label: 'Domain', values: ['Body', 'Calm', 'Chaos', 'Fury', 'Mind', 'Order'], neutral: 'Colorless' },

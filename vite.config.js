@@ -11,7 +11,15 @@ export default defineConfig({
       '/tcgcsv': {
         target: 'https://tcgcsv.com',
         changeOrigin: true,
+        // tcgcsv blocks browser User-Agents; identify the app instead
+        headers: { 'User-Agent': 'RiftboundCollectionManager-dev' },
         rewrite: (path) => path.replace(/^\/tcgcsv/, ''),
+      },
+      // Riot's Riftbound card gallery — Riftbound's card source
+      '/riot': {
+        target: 'https://playriftbound.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/riot/, ''),
       },
       // Netdeck.gg card API (Cyberpunk TCG) — same browser-only fallback
       '/netdeck': {

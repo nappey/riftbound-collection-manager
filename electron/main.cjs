@@ -177,8 +177,9 @@ function createWindow() {
   });
 
   // Inject permissive CORS so prices (tcgcsv) load, and so card-image CDNs can
-  // be drawn onto a canvas CORS-clean for the deck image export.
-  const CORS_HOSTS = ['tcgcsv.com', 'cmsassets.rgpub.io', 'tcgplayer-cdn.tcgplayer.com', 'api.netdeck.gg', 'dstcynss47vun.cloudfront.net'];
+  // be drawn onto a canvas CORS-clean for the deck image export. playriftbound.com
+  // is Riot's card gallery, Riftbound's card source.
+  const CORS_HOSTS = ['tcgcsv.com', 'cmsassets.rgpub.io', 'tcgplayer-cdn.tcgplayer.com', 'api.netdeck.gg', 'dstcynss47vun.cloudfront.net', 'playriftbound.com'];
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     if (CORS_HOSTS.some(h => details.url.includes(h))) {
       callback({
@@ -191,6 +192,13 @@ function createWindow() {
     } else {
       callback({ responseHeaders: details.responseHeaders });
     }
+  });
+
+  // tcgcsv blocks browser-style User-Agents and asks clients to identify
+  // themselves, so prices need an app UA instead of Chromium's.
+  const TCGCSV_UA = `RiftboundCollectionManager/${app.getVersion()}`;
+  session.defaultSession.webRequest.onBeforeSendHeaders({ urls: ['https://tcgcsv.com/*'] }, (details, callback) => {
+    callback({ requestHeaders: { ...details.requestHeaders, 'User-Agent': TCGCSV_UA } });
   });
 
   if (isDev) {

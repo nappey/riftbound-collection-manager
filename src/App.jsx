@@ -28,6 +28,7 @@ import { storageKeys, ACTIVE_GAME_KEY } from './games/storage';
 import { getCached, setCached, loadStoredCards, storeCards } from './games/cardCache';
 import MerchantBtn from './components/MerchantBtn';
 import { completePrices } from './utils/analysis';
+import { remapKeys, remapDecks, remapMerchant } from './utils/remapIds';
 import './App.css';
 import './pages.css';
 
@@ -38,6 +39,8 @@ const tcgcsvBaseFor = (category) => IS_ELECTRON
   ? `https://tcgcsv.com/tcgplayer/${category}`
   : `/tcgcsv/tcgplayer/${category}`;
 const NETDECK_BASE = IS_ELECTRON ? 'https://api.netdeck.gg/api/cards' : '/netdeck/api/cards';
+// Riot's card gallery — Riftbound's main card source (promos come from riftcodex).
+const RIOT_BASE = IS_ELECTRON ? 'https://playriftbound.com' : '/riot';
 
 function applyFilters(cards, filters, collection) {
   const search = filters.search.toLowerCase().trim();
@@ -251,6 +254,15 @@ function SyncedGameApp({ game, onSwitchGame }) {
   return <GameApp key={`${game.id}-${dataVersion}`} game={game} onSwitchGame={onSwitchGame} />;
 }
 
+// Read one saved field; `migrate` re-keys it through the game's legacy id map.
+function loadSaved(key, fallback, migrate) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key)) || fallback;
+    return migrate(value);
+  } catch { return fallback; }
+}
+const NO_REMAP = new Map();
+
 function GameApp({ game, onSwitchGame }) {
   const K = storageKeys(game.id);
   const TCGCSV_BASE = tcgcsvBaseFor(game.prices.tcgcsvCategory);
@@ -261,30 +273,17 @@ function GameApp({ game, onSwitchGame }) {
   const [progress, setProgress] = useState(null); // { done, total } while cards load
   const [prices, setPrices] = useState(() => cached?.prices ?? {}); // already completed when cached
   const [pricesLoading, setPricesLoading] = useState(() => !cached?.prices);
-  const [collection, setCollection] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(K.collection)) || {}; }
-    catch { return {}; }
-  });
-  const [foilCollection, setFoilCollection] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(K.foil)) || {}; }
-    catch { return {}; }
-  });
-  const [lookingFor, setLookingFor] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(K.lf)) || {}; }
-    catch { return {}; }
-  });
-  const [upForTrade, setUpForTrade] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(K.uft)) || {}; }
-    catch { return {}; }
-  });
-  const [decks, setDecks] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(K.decks)) || []; }
-    catch { return []; }
-  });
-  const [merchant, setMerchant] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(K.merchant)) || []; }
-    catch { return []; }
-  });
+  // Saved data written under a game's old card ids (Riftbound: riftcodex ids
+  // from before the switch to Riot's gallery) is re-keyed as it's read; the
+  // save effects below then persist the new keys.
+  const idMap = game.idRemap ?? NO_REMAP;
+  const byKeys = (v) => remapKeys(v, idMap);
+  const [collection, setCollection] = useState(() => loadSaved(K.collection, {}, byKeys));
+  const [foilCollection, setFoilCollection] = useState(() => loadSaved(K.foil, {}, byKeys));
+  const [lookingFor, setLookingFor] = useState(() => loadSaved(K.lf, {}, byKeys));
+  const [upForTrade, setUpForTrade] = useState(() => loadSaved(K.uft, {}, byKeys));
+  const [decks, setDecks] = useState(() => loadSaved(K.decks, [], (v) => remapDecks(v, idMap)));
+  const [merchant, setMerchant] = useState(() => loadSaved(K.merchant, [], (v) => remapMerchant(v, idMap)));
   const [vendorName, setVendorName] = useState(() => {
     try { return localStorage.getItem(K.vendor) || ''; }
     catch { return ''; }
@@ -325,12 +324,13 @@ function GameApp({ game, onSwitchGame }) {
       let fresh = false;
       let shownStored = false;
       loadStoredCards(game.id).then((stored) => {
-        if (!stored || fresh) return;
+        // A card list cached under old ids wouldn't match the re-keyed data.
+        if (!stored || fresh || stored.some((c) => idMap.has(c.id))) return;
         shownStored = true;
         setAllCards(stored);
         setLoading(false);
       });
-      game.api.loadCards({ isElectron: IS_ELECTRON, tcgcsvBase: TCGCSV_BASE, netdeckBase: NETDECK_BASE },
+      game.api.loadCards({ isElectron: IS_ELECTRON, tcgcsvBase: TCGCSV_BASE, netdeckBase: NETDECK_BASE, riotBase: RIOT_BASE },
         (done, total) => setProgress({ done, total }))
         .then((cards) => {
           fresh = true;
@@ -350,7 +350,7 @@ function GameApp({ game, onSwitchGame }) {
         .then((raw) => { const map = completePrices(raw); setCached(game.id, { prices: map }); setPrices(map); setPricesLoading(false); })
         .catch(() => setPricesLoading(false));
     }
-  }, [game, TCGCSV_BASE]);
+  }, [game, TCGCSV_BASE, idMap]);
 
   // Netdeck serves signed image URLs that expire after a few hours. When the
   // window comes back into focus after a long idle, silently refetch the card
@@ -363,7 +363,7 @@ function GameApp({ game, onSwitchGame }) {
       const c = getCached(game.id);
       if (!c?.loadedAt || Date.now() - c.loadedAt < MAX_AGE) return;
       setCached(game.id, {}); // bump loadedAt so a slow reload isn't retriggered
-      game.api.loadCards({ isElectron: IS_ELECTRON, tcgcsvBase: TCGCSV_BASE, netdeckBase: NETDECK_BASE })
+      game.api.loadCards({ isElectron: IS_ELECTRON, tcgcsvBase: TCGCSV_BASE, netdeckBase: NETDECK_BASE, riotBase: RIOT_BASE })
         .then((cards) => { setCached(game.id, { cards }); setAllCards(cards); })
         .catch(() => { /* keep the current cards; the <img> fallback covers expired art */ });
     };
