@@ -120,6 +120,19 @@ function tcgNumber(card) {
 
 const ext = (p, name) => p.extendedData?.find((e) => e.name === name)?.value ?? null;
 
+const DOMAINS = new Set(['Fury', 'Calm', 'Mind', 'Body', 'Chaos', 'Order']);
+// Sets whose gallery domains are unreliable, so tcgcsv's win. Radiance launched
+// with ~25 cards in the wrong domain (Bilgewater Tracker, #003 in the Fury
+// block, tagged Body) and a dozen with none. For older sets the gallery is the
+// better source — tcgcsv has its own handful of wrong domains there.
+const TCG_DOMAIN_SETS = new Set(['RAD']);
+
+// "Fury;Chaos" → ['Fury', 'Chaos']; null for "None" (battlefields) or missing.
+function tcgDomains(p) {
+  const parts = (ext(p, 'Domain') ?? '').split(';').map((s) => s.trim()).filter(Boolean);
+  return parts.length && parts.every((d) => DOMAINS.has(d)) ? parts : null;
+}
+
 /**
  * Attach tcgplayer_id (so prices resolve), plus card type and flavour text
  * where the gallery is missing them, from the set's tcgcsv products.
@@ -153,6 +166,10 @@ export async function enrichFromTcg(cards, tcgcsvBase) {
         const words = (ext(p, 'Card Type') ?? '').split(' ');
         const type = words.pop() || null;
         next.classification = { ...card.classification, type, supertype: card.classification.supertype ?? (words[0] || null) };
+      }
+      const domain = tcgDomains(p);
+      if (domain && (!card.classification.domain.length || TCG_DOMAIN_SETS.has(card.set.set_id))) {
+        next.classification = { ...next.classification, domain };
       }
       const flavour = stripTags(ext(p, 'Flavor Text'));
       if (flavour) next.text = { ...card.text, flavour };
