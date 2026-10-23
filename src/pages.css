@@ -137,6 +137,18 @@
 /* Card library (browse & click to add) */
 .db-library { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .db-lib-step { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-2); }
+/* Build step bar: Legend → Chosen Champion → Main Deck → Battlefields */
+.db-steps { display: flex; gap: 4px; margin: 0; padding: 0; list-style: none; overflow-x: auto; scrollbar-width: none; }
+.db-steps li { flex: 1 1 auto; min-width: 0; }
+.db-step { width: 100%; height: 34px; display: flex; align-items: center; gap: 7px; padding: 0 10px; background: var(--bg-1); border: 1px solid var(--border-0); border-radius: 8px; color: var(--text-2); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.db-step:hover:not(:disabled) { color: var(--text-0); background: var(--bg-2); }
+.db-step:disabled { opacity: 0.45; cursor: default; }
+.db-step.current { border-color: var(--accent-line); background: var(--accent-soft); color: var(--text-0); }
+.db-step-n { flex-shrink: 0; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--border-0); font-family: var(--font-mono); font-size: 10px; }
+.db-step.done .db-step-n { border-color: transparent; background: var(--accent); color: var(--on-accent); }
+.db-step-label { overflow: hidden; text-overflow: ellipsis; }
+.db-step-sub { margin-left: auto; font-family: var(--font-mono); font-size: 10.5px; font-weight: 500; color: var(--text-3); }
+.db-step-nav { margin-left: auto; display: flex; gap: 6px; flex-shrink: 0; }
 .db-lib-step-n { font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-0); background: var(--accent-soft); border: 1px solid var(--accent-line); border-radius: 5px; padding: 2px 7px; }
 .db-lib-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .db-lib-filter { flex: 1; min-width: 180px; height: 32px; background: var(--bg-1); border: 1px solid var(--border-0); border-radius: 8px; padding: 0 12px; color: var(--text-0); font-size: 13px; outline: none; }

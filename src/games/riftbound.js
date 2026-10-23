@@ -184,6 +184,7 @@ const ELEMENTAL_DOMAINS = ['Body', 'Calm', 'Chaos', 'Fury', 'Mind', 'Order'];
 const MAIN_TARGET = 40;
 const SIDEBOARD_MAX = 10;
 const RUNE_TARGET = 12;
+const BATTLEFIELD_TARGET = 3; // three different battlefields (each is a singleton)
 
 const legendDomains = (card) =>
   (card?.classification?.domain ?? []).filter(d => ELEMENTAL_DOMAINS.includes(d));
@@ -200,8 +201,20 @@ function prepopulateRunes(domains) {
 
 const typeOf = (c) => c.classification?.supertype === 'Champion' ? 'Champion' : c.classification?.type;
 
+// Neeko, Blending In (Radiance): "If Neeko is in your deck, choose 3 different
+// legends in addition to your starting legend. (Different means none match
+// names.)" The extra legends can be any domain and don't change the deck's.
+const NEEKO = 'neeko - blending in';
+const BONUS_LEGENDS = 3;
+
 const deck = {
   identity: { kind: 'single', label: 'Legend', max: 1 },
+  bonusLegends: {
+    label: 'Neeko legends',
+    count: BONUS_LEGENDS,
+    grantedBy: (card) => !!card && rules.printingKey(card) === NEEKO,
+    uniqueBy: (card) => rules.printingKey(card),
+  },
   hasChampion: true,
   hasRunes: true,
   scoreToWin: 8, // victory score — the match tracker's default target
@@ -209,6 +222,7 @@ const deck = {
   main: { min: MAIN_TARGET, max: MAIN_TARGET },
   sideboardMax: SIDEBOARD_MAX,
   runeTarget: RUNE_TARGET,
+  battlefieldTarget: BATTLEFIELD_TARGET,
   copyCap: (card) => (rules.isSingleton(card) ? 1 : 3),
   // Type quick-filter chips for the card library (matches classification.type,
   // except 'Champion' which is a supertype).
@@ -233,20 +247,27 @@ const deck = {
   libraryFilterBadge: null,
   stepCopy: {
     pickIdentity: 'Pick your legend — it sets your domains and rune deck.',
-    addCards: "Add cards — showing your legend's domains:",
+    addCards: "Add units, spells and gear — showing your legend's domains:",
+    mainStep: 'Main Deck',
+    battlefields: `Choose ${BATTLEFIELD_TARGET} battlefields — one of each.`,
     identityEmpty: 'Click a Legend in the library — its domains set up your rune deck.',
     mainEmpty: 'Empty — add cards from the library. Set a chosen champion from a champion in your deck.',
   },
-  validate: ({ deck: d, analysis, champion }) => [
+  validate: ({ deck: d, analysis, champion, bonusCards }) => [
     { key: 'legend', ok: !!d.legendId, label: 'Legend' },
+    ...(bonusCards ? [{ key: 'bonus', ok: bonusCards.length === BONUS_LEGENDS, label: `Neeko legends ${bonusCards.length}/${BONUS_LEGENDS}` }] : []),
     { key: 'champion', ok: !!champion, label: 'Chosen champion' },
     { key: 'main', ok: analysis.mainCount === MAIN_TARGET, label: `Main ${analysis.mainCount}/${MAIN_TARGET}` },
+    { key: 'battlefields', ok: analysis.battlefieldCount === BATTLEFIELD_TARGET, over: analysis.battlefieldCount > BATTLEFIELD_TARGET, label: `Battlefields ${analysis.battlefieldCount}/${BATTLEFIELD_TARGET}` },
     { key: 'runes', ok: analysis.runeCount === RUNE_TARGET, label: `Runes ${analysis.runeCount}/${RUNE_TARGET}` },
     { key: 'sb', ok: analysis.sideboardCount <= SIDEBOARD_MAX, over: analysis.sideboardCount > SIDEBOARD_MAX, label: `SB ${analysis.sideboardCount}/${SIDEBOARD_MAX}` },
   ],
-  buildDecklistText: ({ deck: d, analysis, identityCards, champion }) => {
+  buildDecklistText: ({ deck: d, analysis, identityCards, champion, bonusCards }) => {
     let out = '';
-    if (identityCards[0]) out += `Legend:\n1 ${identityCards[0].name}\n\n`;
+    // Neeko's extra legends follow the starting legend; the importer reads the
+    // first legend as the starting one and the rest as Neeko's picks.
+    const legends = identityCards[0] ? [identityCards[0], ...(bonusCards ?? [])] : [];
+    if (legends.length) out += `Legend:\n${legends.map(c => `1 ${c.name}`).join('\n')}\n\n`;
     if (champion) out += `Champion:\n1 ${champion.name}\n\n`;
     if (analysis.mainRows.length) {
       out += 'MainDeck:\n';

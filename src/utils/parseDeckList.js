@@ -142,6 +142,7 @@ export function deckFromImport(text, nameMap, game) {
 
   const main = {}, sideboard = {}, runes = {};
   const legendIds = [];
+  const bonusLegendIds = [];
   let championId = null;
   const unknown = [];
   let total = 0, matchedCount = 0;
@@ -164,7 +165,10 @@ export function deckFromImport(text, nameMap, game) {
       const type = card.classification?.type;
 
       if (type === 'Legend') {
-        if (legendIds.length < R.identity.max && !legendIds.includes(card.id)) legendIds.push(card.id);
+        if (legendIds.includes(card.id) || bonusLegendIds.includes(card.id)) continue;
+        if (legendIds.length < R.identity.max) legendIds.push(card.id);
+        // Legends past the identity are bonus picks (Riftbound: Neeko's).
+        else if (R.bonusLegends && bonusLegendIds.length < R.bonusLegends.count) bonusLegendIds.push(card.id);
         continue;
       }
 
@@ -190,7 +194,7 @@ export function deckFromImport(text, nameMap, game) {
 
   return {
     name: deckNameFromText(text),
-    legendId: legendIds[0] ?? null, legendIds, championId, main, sideboard, runes,
+    legendId: legendIds[0] ?? null, legendIds, bonusLegendIds, championId, main, sideboard, runes,
     unknown, total, matchedCount,
   };
 }

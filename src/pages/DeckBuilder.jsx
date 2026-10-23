@@ -117,7 +117,7 @@ const factionKey = (label) => String(label).split(/[\s·]/)[0].toLowerCase();
 
 const newDeckObj = () => ({
   id: uid(), name: 'Untitled Deck', updatedAt: Date.now(),
-  legendId: null, legendIds: [], championId: null,
+  legendId: null, legendIds: [], bonusLegendIds: [], championId: null,
   main: {}, sideboard: {}, bench: {}, runes: {}, tags: {}, arts: {},
   notes: '', noteLog: [], log: [], matches: [], siding: [],
 });
@@ -125,7 +125,7 @@ const newDeckObj = () => ({
 // Ensure a deck has all v2 fields, migrating an old { cards } deck if needed.
 function normalizeDeck(deck, cardById) {
   const d = {
-    legendId: null, legendIds: [], championId: null, main: {}, sideboard: {}, bench: {}, runes: {}, tags: {}, arts: {},
+    legendId: null, legendIds: [], bonusLegendIds: [], championId: null, main: {}, sideboard: {}, bench: {}, runes: {}, tags: {}, arts: {},
     notes: '', noteLog: [], log: [], matches: [], siding: [],
     ...deck,
   };
@@ -166,6 +166,8 @@ export default function DeckBuilder({
   // the legend is set, until a champion is picked or the step is skipped.
   const [libPickChampion, setLibPickChampion] = useState(false); // reopened from step 3
   const [champSkipped, setChampSkipped] = useState(false);
+  const [libPickBonus, setLibPickBonus] = useState(false); // picking bonus legends (Neeko)
+  const [libSection, setLibSection] = useState('main');     // after the champion: 'main' | 'battlefields'
   const [view, setView] = useState('build');         // center view: 'build' | 'details'
   // Phones: one pane at a time (library or deck), tap-to-select deck tiles
   // with an action bar in place of the hover overlay, and a toast on add.
@@ -294,6 +296,7 @@ export default function DeckBuilder({
     const deck = {
       ...withIdentity(newDeckObj(), res.legendIds),
       name: res.name || 'Imported Deck',
+      bonusLegendIds: res.bonusLegendIds ?? [],
       championId: res.championId,
       main: res.main,
       sideboard: res.sideboard,
@@ -404,6 +407,21 @@ export default function DeckBuilder({
       return withLog(withIdentity(d, ids.filter(id => id !== cardId)), `Removed legend: ${cardById.get(cardId)?.name ?? ''}`, 'legend');
     });
     resetLibFilters(); // back to step 1
+  }
+
+  // Toggle a bonus legend (Neeko's picks): up to BL.count, all names different
+  // from each other and from the starting legend.
+  function toggleBonusLegend(card) {
+    mutate(active.id, d => {
+      const ids = d.bonusLegendIds ?? [];
+      if (ids.includes(card.id)) {
+        return withLog({ ...d, bonusLegendIds: ids.filter(id => id !== card.id) }, `Removed ${BL.label.toLowerCase()} pick: ${card.name}`, 'legend');
+      }
+      if (ids.length >= BL.count) return d;
+      const taken = [d.legendId, ...ids].map(id => cardById.get(id)).filter(Boolean).map(c => BL.uniqueBy(c));
+      if (taken.includes(BL.uniqueBy(card))) return d;
+      return withLog({ ...d, bonusLegendIds: [...ids, card.id] }, `Added ${BL.label.toLowerCase()} pick: ${card.name}`, 'legend');
+    });
   }
 
   function resetRunesFromLegend() {
@@ -547,6 +565,16 @@ export default function DeckBuilder({
   const activeIdentityIds = identityIds(active);
   const identityCards = activeIdentityIds.map(id => cardById.get(id)).filter(Boolean);
   const identityComplete = activeIdentityIds.length >= R.identity.max;
+  // Bonus legends (Riftbound: Neeko, Blending In) — extra legends of any domain
+  // the deck names while a granting card is in the main deck. The picks stay
+  // saved if that card is taken out, but only count while it's in.
+  const BL = R.bonusLegends;
+  const bonusActive = !!(BL && active && Object.keys(active.main).some(id => BL.grantedBy(cardById.get(id))));
+  const bonusCards = bonusActive
+    ? (active.bonusLegendIds ?? []).map(id => cardById.get(id)).filter(Boolean)
+    : null;
+  // Names already taken by the starting legend + bonus picks ("none match names").
+  const bonusTaken = bonusCards ? new Set([...identityCards, ...bonusCards].map(c => BL.uniqueBy(c))) : null;
   // Step 1 (pick identity) until the identity is complete; step 2 (add cards)
   // after — unless the user chose to browse legends again.
   // Legal chosen champions: champion units sharing a tag (the champion's
@@ -560,10 +588,15 @@ export default function DeckBuilder({
         (c.tags ?? []).some(t => identityTags.has(t)))
     : [];
   const libStage = !identityComplete || libBrowseIdentity ? 'identity'
+    : libPickBonus && bonusActive ? 'bonus'
     : R.hasChampion && (libPickChampion || (!active?.championId && !champSkipped)) ? 'champion'
+    : R.hasBattlefields && libSection === 'battlefields' ? 'battlefields'
     : 'cards';
-  const hasLegend = libStage === 'cards';
+  const bfStage = libStage === 'battlefields';
+  // Past the identity/champion steps — the library shows the playable pool.
+  const hasLegend = libStage === 'cards' || bfStage;
   const champStage = libStage === 'champion';
+  const bonusStage = libStage === 'bonus';
   // Library results (plain function; React Compiler memoizes — see computeAnalysis).
   // Two-step flow: step 1 shows only legends; step 2 shows the rest of the pool,
   // restricted to cards playable under the chosen identity (game.deck.libraryFilter).
@@ -593,8 +626,13 @@ export default function DeckBuilder({
         if (printings.get(c.id)?.base !== c) return false;
         if (champStage) return legalChampions.includes(c) && matchQ(c);   // step 2 — legal champions only
         const isLegend = c.classification?.type === 'Legend';
+        if (bonusStage) return isLegend && c.id !== active.legendId && matchQ(c); // bonus legends — any domain
         if (!hasLegend) return isLegend && matchQ(c);       // step 1 — legends only
-        if (isLegend) return false;                         // step 2 — everything but legends
+        if (isLegend) return false;                         // later steps — everything but legends
+        // Battlefields get their own step; the main-deck step shows the rest.
+        const isBf = R.hasBattlefields && c.classification?.type === 'Battlefield';
+        if (bfStage) return isBf && matchQ(c);
+        if (isBf) return false;
         if (!libShowAll && !playable(c)) return false;      // only what the identity allows
         if (libType && typeOf(c) !== libType) return false;
         return matchQ(c);
@@ -612,7 +650,7 @@ export default function DeckBuilder({
   // set/removed) or the active deck changes, so a stale filter doesn't linger.
   const resetLibFilters = useCallback(() => {
     setLibFilter(''); setLibType(''); setLibShowAll(false); setLibBrowseIdentity(false);
-    setLibPickChampion(false); setChampSkipped(false);
+    setLibPickChampion(false); setChampSkipped(false); setLibPickBonus(false); setLibSection('main');
   }, []);
 
   // How many copies of a card the active deck already holds (across every zone,
@@ -639,8 +677,13 @@ export default function DeckBuilder({
       if (R.hasBattlefields && card.classification?.type === 'Battlefield') battlefieldRows.push(row);
       else { mainRows.push(row); mainCount += qty; }
     }
+    // Deck order: set (release order), then color (domain order, mono before
+    // multi, colorless last), then energy, then name.
     const sortRows = (rows) => rows.sort((a, b) =>
-      (a.card.attributes?.energy ?? 99) - (b.card.attributes?.energy ?? 99) || a.card.name.localeCompare(b.card.name));
+      setRank(a.card) - setRank(b.card) ||
+      colorRank(a.card) - colorRank(b.card) ||
+      (a.card.attributes?.energy ?? 99) - (b.card.attributes?.energy ?? 99) ||
+      a.card.name.localeCompare(b.card.name));
     sortRows(mainRows); sortRows(battlefieldRows);
 
     const zoneRows = (zone) => Object.entries(active[zone]).map(([id, qty]) => {
@@ -656,7 +699,7 @@ export default function DeckBuilder({
       const short = Math.max(0, qty - ownedTotal(card, collection, foilCollection));
       if (short > 0) { missingCost += price * short; missing.push({ card, short, price }); }
     }
-    for (const idCard of identityCards) {
+    for (const idCard of [...identityCards, ...(bonusCards ?? [])]) {
       const short = Math.max(0, 1 - ownedTotal(idCard, collection, foilCollection));
       const lp = unitPrice(idCard, prices) ?? 0;
       deckValue += lp;
@@ -666,7 +709,7 @@ export default function DeckBuilder({
 
     return {
       legend, identityCards,
-      mainRows, battlefieldRows,
+      mainRows, battlefieldRows, battlefieldCount: battlefieldRows.reduce((n, r) => n + r.qty, 0),
       sideboardRows: zoneRows('sideboard'), benchRows: zoneRows('bench'),
       mainCount, runeCount: sumQty(active.runes), sideboardCount: sumQty(active.sideboard),
       deckValue, missingCost, missing,
@@ -680,6 +723,32 @@ export default function DeckBuilder({
   // The chosen champion is only valid while it's in the main deck.
   const champion = championOptions.find(c => c.id === active?.championId) ?? null;
 
+  // Build steps: Legend → Chosen Champion → Main Deck → (Neeko legends) →
+  // Battlefields. Each can be revisited from the step bar; later ones open
+  // once the identity is complete.
+  function goStep(id) {
+    setLibFilter(''); setLibType('');
+    setLibBrowseIdentity(id === 'identity');
+    setLibPickChampion(id === 'champion');
+    setLibPickBonus(id === 'bonus');
+    if (id === 'cards' || id === 'battlefields' || id === 'bonus') setChampSkipped(true);
+    setLibSection(id === 'battlefields' ? 'battlefields' : 'main');
+  }
+  const steps = !active ? [] : [
+    { id: 'identity', label: R.identity.label, done: identityComplete,
+      sub: multi ? `${activeIdentityIds.length}/${R.identity.max}` : null },
+    ...(R.hasChampion ? [{ id: 'champion', label: 'Champion', done: !!champion }] : []),
+    { id: 'cards', label: R.stepCopy.mainStep ?? 'Main Deck', done: analysis.mainCount === R.main.max,
+      sub: `${analysis.mainCount}/${R.main.max}` },
+    ...(bonusActive ? [{ id: 'bonus', label: BL.label, done: bonusCards.length === BL.count,
+      sub: `${bonusCards.length}/${BL.count}` }] : []),
+    ...(R.hasBattlefields ? [{ id: 'battlefields', label: 'Battlefields', done: analysis.battlefieldCount === R.battlefieldTarget,
+      sub: `${analysis.battlefieldCount}/${R.battlefieldTarget}` }] : []),
+  ];
+  const stepIndex = Math.max(0, steps.findIndex(st => st.id === libStage));
+  const nextStep = steps[stepIndex + 1] ?? null;
+  const prevStep = stepIndex > 0 ? steps[stepIndex - 1] : null;
+
   // Match record for this deck.
   const matches = active?.matches ?? [];
   const mWins = matches.filter(m => m.result === 'W').length;
@@ -691,7 +760,7 @@ export default function DeckBuilder({
   const stats = analysis ? computeDeckStats(analysis, active, R) : null;
   const hasBaitedHook = analysis?.mainRows.some(r => r.card.name === 'Baited Hook') ?? false;
   const baitedHookOdds = hasBaitedHook ? computeBaitedHookOdds(analysis) : null;
-  const checklist = analysis ? R.validate({ deck: active, analysis, identityCards, champion }) : [];
+  const checklist = analysis ? R.validate({ deck: active, analysis, identityCards, champion, bonusCards }) : [];
   const hasTags = stats && Object.values(stats.tags).some(n => n > 0);
   const domainEntries = stats ? Object.entries(stats.domains).sort((a, b) => b[1] - a[1]) : [];
   const maxDomain = domainEntries.length ? domainEntries[0][1] : 1;
@@ -699,7 +768,7 @@ export default function DeckBuilder({
   // Build the plain-text decklist — the exact section format the importer reads.
   function buildDecklistText() {
     if (!active || !analysis) return '';
-    return R.buildDecklistText({ deck: active, analysis, identityCards, champion });
+    return R.buildDecklistText({ deck: active, analysis, identityCards, champion, bonusCards });
   }
 
   async function copyDecklist() {
@@ -718,6 +787,7 @@ export default function DeckBuilder({
     const asShown = (card) => card && { ...card, media: artOf(card).media };
     try {
       const identity = identityCards.map(c => [R.identity.kind === 'multi' ? 'Legend' : R.identity.label, asShown(c)]);
+      for (const c of bonusCards ?? []) identity.push([BL.label.replace(/s$/, ''), asShown(c)]);
       if (R.hasChampion && champion) identity.push(['Champion', asShown(champion)]);
       const shown = (rows) => rows.map(r => ({ ...r, card: asShown(r.card) }));
       await exportDeckImage({
@@ -895,10 +965,18 @@ export default function DeckBuilder({
 
   // A library grid tile — click to add the card to the deck.
   function renderLibTile({ card, flagged }) {
-    const inDeck = qtyInDeck(card.id);
     const isLegend = card.classification?.type === 'Legend';
+    // Bonus-legend picking: a tile toggles the pick; one is blocked once the
+    // picks are full or its name is already taken.
+    const bonusPicked = bonusStage && (bonusCards ?? []).some(c => c.id === card.id);
+    const bonusBlocked = bonusStage && !bonusPicked
+      && ((bonusCards ?? []).length >= BL.count || bonusTaken.has(BL.uniqueBy(card)));
+    const inDeck = bonusStage ? (bonusPicked ? 1 : 0) : qtyInDeck(card.id);
     // A legend that isn't in the deck is still blocked once the identity is full.
-    const atCap = !champStage && (inDeck >= deckCap(card) || (isLegend && multi && inDeck === 0 && identityComplete));
+    // Battlefields: once the deck has its full set, the rest lock.
+    const bfFull = bfStage && inDeck === 0 && (analysis?.battlefieldCount ?? 0) >= R.battlefieldTarget;
+    const atCap = bonusStage ? bonusBlocked
+      : bfFull || (!champStage && (inDeck >= deckCap(card) || (isLegend && multi && inDeck === 0 && identityComplete)));
     const kind = R.typeOf(card);
     return (
       <button
@@ -906,10 +984,15 @@ export default function DeckBuilder({
         className={`db-lib-tile${inDeck > 0 ? ' in-deck' : ''}${atCap ? ' at-cap' : ''}${flagged ? ' flagged' : ''}${champStage && active.championId === card.id ? ' chosen' : ''}`}
         onClick={() => {
           if (champStage) { pickChampion(card); if (isMobile) flashToast(`Chosen champion: ${card.name}`); return; }
+          if (bonusStage) { toggleBonusLegend(card); if (isMobile) flashToast(`${bonusPicked ? 'Removed' : 'Added'} ${card.name}`); return; }
           addCard(card); if (isMobile) flashToast(`Added ${card.name}`);
         }}
         disabled={atCap}
-        title={champStage ? `Choose ${card.name} as your champion` : atCap ? `${card.name} — at max (${deckCap(card)})` : `Add ${card.name}`}
+        title={champStage ? `Choose ${card.name} as your champion`
+          : bonusStage ? (bonusPicked ? `Remove ${card.name} from ${BL.label}`
+            : bonusBlocked ? `${card.name} — ${(bonusCards ?? []).length >= BL.count ? `${BL.count} already chosen` : 'name already chosen'}`
+            : `Add ${card.name} to ${BL.label}`)
+          : atCap ? `${card.name} — at max (${deckCap(card)})` : `Add ${card.name}`}
       >
         <span className="db-lib-art">
           {card.media?.image_url
@@ -1127,17 +1210,33 @@ export default function DeckBuilder({
           {view === 'build' ? (
             /* ── Card library: step 1 pick a legend, step 2 add cards ── */
             <div className="db-library">
-              <div className="db-lib-step">
-                {champStage ? (
-                  <>
-                    <span className="db-lib-step-n">Step 2</span> Choose your chosen champion — {/^[aeiou]/i.test([...identityTags][0] ?? '') ? 'an' : 'a'} {[...identityTags].join(' / ')} champion unit. It goes in your main deck.
-                    <button className="btn ghost db-champ-skip" onClick={() => { setChampSkipped(true); setLibPickChampion(false); setLibFilter(''); }}>
-                      {active.championId ? 'Back to cards' : 'Skip for now'}
+              {/* Step bar — every step can be revisited once the identity is set */}
+              <ol className="db-steps">
+                {steps.map((st, i) => (
+                  <li key={st.id}>
+                    <button
+                      className={`db-step${st.id === libStage ? ' current' : ''}${st.done ? ' done' : ''}`}
+                      disabled={i > 0 && !identityComplete}
+                      onClick={() => goStep(st.id)}
+                    >
+                      <span className="db-step-n">{st.done ? '✓' : i + 1}</span>
+                      <span className="db-step-label">{st.label}</span>
+                      {st.sub && <span className="db-step-sub">{st.sub}</span>}
                     </button>
-                  </>
+                  </li>
+                ))}
+              </ol>
+              <div className="db-lib-step">
+                <span className="db-lib-step-n">Step {stepIndex + 1}</span>{' '}
+                {bonusStage ? (
+                  <>Choose {BL.count} legends in addition to your starting legend — any domain, no two with the same name.</>
+                ) : champStage ? (
+                  <>Choose your chosen champion — {/^[aeiou]/i.test([...identityTags][0] ?? '') ? 'an' : 'a'} {[...identityTags].join(' / ')} champion unit. It goes in your main deck.</>
+                ) : bfStage ? (
+                  <>{R.stepCopy.battlefields}</>
                 ) : hasLegend ? (
                   <>
-                    <span className="db-lib-step-n">Step {R.hasChampion ? 3 : 2}</span> {R.stepCopy.addCards}
+                    {R.stepCopy.addCards}
                     <span className="db-legend-domains">
                       {identityCards.flatMap(c => R.identityFactions(c)).map((dm, i) => (
                         <span key={`${dm}-${i}`} className="db-domain-pill" style={{ color: `var(--d-${factionKey(dm)})` }}>{dm}</span>
@@ -1145,20 +1244,32 @@ export default function DeckBuilder({
                     </span>
                   </>
                 ) : (
-                  <><span className="db-lib-step-n">Step 1</span> {R.stepCopy.pickIdentity}{multi ? ` (${activeIdentityIds.length}/${R.identity.max} chosen)` : ''}</>
+                  <>{R.stepCopy.pickIdentity}{multi ? ` (${activeIdentityIds.length}/${R.identity.max} chosen)` : ''}</>
+                )}
+                {identityComplete && (
+                  <span className="db-step-nav">
+                    {prevStep && (
+                      <button className="btn ghost" onClick={() => goStep(prevStep.id)}>← {prevStep.label}</button>
+                    )}
+                    {nextStep && (
+                      <button className={`btn${steps[stepIndex]?.done ? ' primary' : ' ghost'}`} onClick={() => goStep(nextStep.id)}>
+                        {champStage && !active.championId ? 'Skip' : 'Next'}: {nextStep.label} →
+                      </button>
+                    )}
+                  </span>
                 )}
               </div>
               <div className="db-lib-toolbar">
                 <input
                   className="db-lib-filter"
                   type="search"
-                  placeholder={champStage ? 'Filter champions…' : hasLegend ? 'Filter cards by name or tag…' : 'Filter legends…'}
+                  placeholder={champStage ? 'Filter champions…' : bfStage ? 'Filter battlefields…' : hasLegend ? 'Filter cards by name or tag…' : 'Filter legends…'}
                   value={libFilter}
                   onChange={e => setLibFilter(e.target.value)}
                 />
-                {hasLegend && (
+                {hasLegend && !bfStage && (
                   <div className="db-lib-chips">
-                    {R.libraryTypes.filter(t => t !== 'Legend').map(t => (
+                    {R.libraryTypes.filter(t => t !== 'Legend' && !(R.hasBattlefields && t === 'Battlefield')).map(t => (
                       <button
                         key={t}
                         className={`db-lib-chip${libType === t ? ' active' : ''}`}
@@ -1177,22 +1288,9 @@ export default function DeckBuilder({
                         Show all
                       </button>
                     )}
-                    {multi && (
-                      <button className="db-lib-chip" onClick={() => setLibBrowseIdentity(true)}>{R.identity.label}</button>
-                    )}
-                    {R.hasChampion && (
-                      <button className="db-lib-chip" onClick={() => { setLibPickChampion(true); setLibFilter(''); }}>
-                        {champion ? `Champion: ${champion.name}` : 'Choose champion'}
-                      </button>
-                    )}
                   </div>
                 )}
-                {!hasLegend && multi && identityComplete && (
-                  <div className="db-lib-chips">
-                    <button className="db-lib-chip active" onClick={() => setLibBrowseIdentity(false)}>← Back to cards</button>
-                  </div>
-                )}
-                <span className="db-lib-total">{libResults.length} {champStage ? (libResults.length === 1 ? 'champion' : 'champions') : hasLegend ? 'cards' : 'legends'}</span>
+                <span className="db-lib-total">{libResults.length} {champStage ? (libResults.length === 1 ? 'champion' : 'champions') : bfStage ? 'battlefields' : hasLegend ? 'cards' : 'legends'}</span>
               </div>
               {libResults.length
                 ? <div className="db-lib-grid">{libResults.flatMap((r, i) => {
@@ -1206,7 +1304,7 @@ export default function DeckBuilder({
                   })}</div>
                 : <div className="db-zone-empty">{champStage && !libFilter
                     ? <>No champion units match this legend yet. <button className="btn ghost" onClick={() => setChampSkipped(true)}>Continue without one</button></>
-                    : <>No {champStage ? 'champions' : hasLegend ? 'cards' : 'legends'} match — adjust the filter.</>}</div>}
+                    : <>No {champStage ? 'champions' : bfStage ? 'battlefields' : hasLegend ? 'cards' : 'legends'} match — adjust the filter.</>}</div>}
             </div>
           ) : (
             /* ── Details: stats, matchups, siding, notes, change log ── */
@@ -1546,6 +1644,37 @@ export default function DeckBuilder({
                 <div className="db-identity-empty">{R.stepCopy.identityEmpty}</div>
               )}
             </div>
+
+            {bonusActive && <div className="db-identity-slot">
+              <div className="db-identity-label">{BL.label} {bonusCards.length}/{BL.count}</div>
+              <div className="db-identity-list">
+                {bonusCards.map(idCard => (
+                  <div key={idCard.id} className="db-mini-card">
+                    <button className="db-mini-img" onClick={() => onOpenModal?.(idCard)} title="View details">
+                      {artOf(idCard).media?.image_url
+                        ? <img src={artOf(idCard).media.image_url} alt={idCard.name} loading="lazy" />
+                        : <span className="db-line-ph">{idCard.name.slice(0, 2)}</span>}
+                    </button>
+                    {renderArtPicker(idCard, 'slot', `bonus-${idCard.id}`)}
+                    <div className="db-mini-info">
+                      <span className="db-mini-name">{idCard.name}</span>
+                      <span className="db-legend-domains">
+                        {R.identityFactions(idCard).map(dm => (
+                          <span key={dm} className="db-domain-pill" style={{ color: `var(--d-${factionKey(dm)})` }}>{dm}</span>
+                        ))}
+                      </span>
+                      <button className="btn ghost danger db-mini-remove" onClick={() => toggleBonusLegend(idCard)}>Remove</button>
+                    </div>
+                  </div>
+                ))}
+                {bonusCards.length < BL.count && (
+                  <div className="db-identity-empty">
+                    {BL.count - bonusCards.length} more to pick.{' '}
+                    <button className="btn ghost" onClick={() => { setLibPickBonus(true); setLibFilter(''); setView('build'); }}>Choose legends</button>
+                  </div>
+                )}
+              </div>
+            </div>}
 
             {R.hasChampion && <div className="db-identity-slot">
               <div className="db-identity-label">Chosen Champion</div>

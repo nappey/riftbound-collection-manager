@@ -176,6 +176,10 @@
   .db-head-actions { width: 100%; }
   .db-head-actions .btn { flex: 1; justify-content: center; }
   .db-lib-step { flex-wrap: wrap; line-height: 1.45; }
+  .db-steps li { flex: 0 0 auto; }
+  .db-step { height: 36px; }
+  .db-step-nav { margin-left: 0; width: 100%; }
+  .db-step-nav .btn { flex: 1; justify-content: center; }
   .db-champ-skip { margin-left: 0; }
   .db-lib-toolbar { flex-wrap: wrap; }
   .db-lib-filter { width: 100%; height: 38px; font-size: 16px; }
