@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react';
 import { isAlwaysFoil, isSingleton, isBattlefield } from '../utils/playset';
+import { printingKey } from '../utils/printings';
 import { useGame } from '../games/GameContext';
 import { entryProgressKey } from '../games/storage';
 import './setEntry.css';
@@ -28,6 +29,27 @@ const Check = () => (
 // Sentinel set id for "All Sets" — step through every real set's cards for a
 // domain in one pass instead of one set at a time, for a mixed/unsorted pile.
 const ALL_SETS = '__all__';
+
+// Sentinel domain for cards with more than one domain. A physical pile is
+// sorted with dual-domain cards kept apart, so they get their own slice instead
+// of showing up in each of their domains' passes.
+const MULTI = '__multi__';
+
+const cardDomains = (c) => c.classification?.domain ?? [];
+
+function inDomain(c, domain) {
+  const ds = cardDomains(c);
+  return domain === MULTI ? ds.length > 1 : ds.length === 1 && ds[0] === domain;
+}
+
+const domainLabel = (d) => (d === MULTI ? 'Multi-domain' : d);
+
+// Value for a dot's `--c`: the domain's color, or a wheel of every domain for MULTI.
+function domainColor(d, factionValues) {
+  if (d !== MULTI) return `var(--d-${d.toLowerCase()})`;
+  const stops = factionValues.map(v => `var(--d-${v.toLowerCase()})`);
+  return `conic-gradient(${[...stops, stops[0]].join(', ')})`;
+}
 
 function sortByEnergy(cards) {
   return [...cards].sort((a, b) => {
@@ -71,33 +93,33 @@ function ConfigScreen({ allCards, onStart }) {
   const domains = useMemo(() => {
     if (!selectedSet) return [];
     const seen = new Set();
+    let multi = false;
     for (const c of allCards) {
-      if (inSet(c)) (c.classification?.domain ?? []).forEach(d => seen.add(d));
+      if (!inSet(c) || c.classification?.type === 'Rune') continue;
+      const ds = cardDomains(c);
+      if (ds.length > 1) multi = true;
+      else if (ds.length === 1) seen.add(ds[0]);
     }
-    return [...seen].sort();
+    const out = [...seen].sort();
+    return multi ? [...out, MULTI] : out;
   }, [allCards, selectedSet, inSet]);
 
-  const cardCount = useMemo(() => {
-    if (!selectedSet || !selectedDomain) return 0;
+  // Alternate Arts aren't steps of their own — they're asked about on their
+  // base card's step, like promo variants.
+  const sliceCards = useMemo(() => {
+    if (!selectedSet || !selectedDomain) return [];
     return allCards.filter(c =>
       inSet(c) &&
       c.classification?.type !== 'Rune' &&
-      (c.classification?.domain ?? []).includes(selectedDomain) &&
+      inDomain(c, selectedDomain) &&
       !c.metadata?.alternate_art
-    ).length;
+    );
   }, [allCards, selectedSet, selectedDomain, inSet]);
+  const cardCount = sliceCards.length;
 
   function handleStart() {
     if (!selectedSet || !selectedDomain) return;
-    const cards = sortByEnergy(
-      allCards.filter(c =>
-        inSet(c) &&
-        c.classification?.type !== 'Rune' &&
-        (c.classification?.domain ?? []).includes(selectedDomain) &&
-        !c.metadata?.alternate_art
-      )
-    );
-    onStart(cards, selectedSet, selectedDomain);
+    onStart(sortByEnergy(sliceCards), selectedSet, selectedDomain);
   }
 
   return (
@@ -136,8 +158,8 @@ function ConfigScreen({ allCards, onStart }) {
                 className={`chip${selectedDomain === d ? ' active' : ''}`}
                 onClick={() => setSelectedDomain(d)}
               >
-                <span className="chip-dot" style={{'--c': `var(--d-${d.toLowerCase()})`}}></span>
-                {d}
+                <span className="chip-dot" style={{'--c': domainColor(d, game.faction.values)}}></span>
+                {domainLabel(d)}
               </button>
             ))}
             {!selectedSet && <span style={{fontSize: 12, color: 'var(--text-3)', padding: '4px 8px'}}>—</span>}
@@ -164,7 +186,7 @@ function ConfigScreen({ allCards, onStart }) {
 
 function CardEntryScreen({
   cards, setLabel, domain, collection, foilCollection, onAdjust, onAdjustFoil, onDone,
-  promoByName = {}, promoShortLabels = {}, initialIndex = 0, onIndexChange, showCardSet = false,
+  promoByName = {}, promoShortLabels = {}, altArtsByKey = {}, initialIndex = 0, onIndexChange, showCardSet = false,
 }) {
   const game = useGame();
   const SET_LABELS = game.setLabels;
@@ -188,9 +210,14 @@ function CardEntryScreen({
   const foilCount   = foilCollection[card.id] ?? 0;
   const combined    = alwaysFoil ? foilCount : count + foilCount;
 
-  const cardPromos = (promoByName[card.name.toLowerCase().trim()] ?? []).map(p => ({
+  // Alt Arts belong on the base card's step, not on its Overnumbered/Signature step.
+  const isPremium = card.metadata?.overnumbered || card.metadata?.signature;
+  const cardPromos = [
+    ...(isPremium ? [] : altArtsByKey[`${card.set?.set_id}|${printingKey(card)}`] ?? []).map(p => ({ p, label: 'Alt Art' })),
+    ...(promoByName[card.name.toLowerCase().trim()] ?? []).map(p => ({ p, label: promoShortLabels[p.set?.set_id] ?? 'Promo' })),
+  ].map(({ p, label }) => ({
     card: p,
-    label: promoShortLabels[p.set?.set_id] ?? 'Promo',
+    label,
     alwaysFoil: isAlwaysFoil(p),
     count: collection[p.id] ?? 0,
     foilCount: foilCollection[p.id] ?? 0,
@@ -255,9 +282,9 @@ function CardEntryScreen({
           {showCardSet && (
             <span style={{color: 'var(--accent)', fontSize: 12}}>{SET_LABELS[card.set?.set_id] ?? card.set?.set_id}</span>
           )}
-          <span style={{color: `var(--d-${(card.classification?.domain?.[0] ?? '').toLowerCase()})`, fontSize: 12}}>
-            {card.classification?.domain?.[0]}
-          </span>
+          {cardDomains(card).map(d => (
+            <span key={d} style={{color: `var(--d-${d.toLowerCase()})`, fontSize: 12}}>{d}</span>
+          ))}
         </div>
       </div>
 
@@ -269,8 +296,8 @@ function CardEntryScreen({
           </button>
           <span className="se-pill set-pill">{setLabel}</span>
           <span className="se-pill">
-            <span className="dot" style={{'--c': `var(--d-${domain.toLowerCase()})`}}></span>
-            {domain}
+            <span className="dot" style={{'--c': domainColor(domain, game.faction.values)}}></span>
+            {domainLabel(domain)}
           </span>
           <div className="entry-progress-bar" style={{flex: 1}}>
             <div className="fill" style={{width: `${((index + 1) / cards.length) * 100}%`}}></div>
@@ -446,6 +473,16 @@ export default function SetEntry({ allCards, collection, foilCollection, onAdjus
   const game = useGame();
   const SET_LABELS = game.setLabels;
   const [session, setSession] = useState(null);
+  // Alternate Art printings by the set + card they're an alternate of.
+  const altArtsByKey = useMemo(() => {
+    const map = {};
+    for (const c of allCards) {
+      if (!c.metadata?.alternate_art || c.classification?.type === 'Rune') continue;
+      const key = `${c.set?.set_id}|${printingKey(c)}`;
+      (map[key] = map[key] || []).push(c);
+    }
+    return map;
+  }, [allCards]);
   // Remembers how far into each set+domain slice we got, keyed by
   // "setId:domain" — so stepping away from a half-finished domain (to work a
   // different one, or a different set) and coming back resumes in place
@@ -483,6 +520,7 @@ export default function SetEntry({ allCards, collection, foilCollection, onAdjus
       onDone={() => setSession(null)}
       promoByName={promoByName}
       promoShortLabels={promoShortLabels}
+      altArtsByKey={altArtsByKey}
       initialIndex={progress[session.key] ?? 0}
       onIndexChange={(i) => saveIndex(session.key, i)}
     />
