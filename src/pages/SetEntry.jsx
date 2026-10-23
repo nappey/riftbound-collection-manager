@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react';
 import { isAlwaysFoil, isSingleton, isBattlefield } from '../utils/playset';
 import { useGame } from '../games/GameContext';
 import { entryProgressKey } from '../games/storage';
@@ -212,22 +212,26 @@ function CardEntryScreen({
   const next = () => setIndex(i => Math.min(cards.length - 1, i + 1));
   const prev = () => setIndex(i => Math.max(0, i - 1));
 
-  useEffect(() => {
-    function handler(e) {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-      if (e.key === 'ArrowRight' || e.key === 'Enter') next();
-      else if (e.key === 'ArrowLeft') prev();
-      else if (e.key === 'y' || e.key === 'Y') {
-        if (singleton) setCount(1);
-        else setCount(Math.max(3, count));
-      }
-      else if (e.key === 'n' || e.key === 'N') { setCount(0); setFoilCount(0); }
-      else if (e.key >= '0' && e.key <= '9') setCount(parseInt(e.key));
-      else if (e.key === 'f' || e.key === 'F') setFoilCount(Math.min(3, foilCount + 1));
+  // Effect event: always sees the current card/counts, so the listener is
+  // registered once instead of re-binding on every count change.
+  const onKeyDown = useEffectEvent((e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    if (e.key === 'ArrowRight' || e.key === 'Enter') next();
+    else if (e.key === 'ArrowLeft') prev();
+    else if (e.key === 'y' || e.key === 'Y') {
+      if (singleton) setCount(1);
+      else setCount(Math.max(3, count));
     }
+    else if (e.key === 'n' || e.key === 'N') { setCount(0); setFoilCount(0); }
+    else if (e.key >= '0' && e.key <= '9') setCount(parseInt(e.key));
+    else if (e.key === 'f' || e.key === 'F') setFoilCount(Math.min(3, foilCount + 1));
+  });
+
+  useEffect(() => {
+    const handler = (e) => onKeyDown(e);
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [card, index, count, foilCount]);
+  }, []);
 
   const psBadge = combined >= 3
     ? `Playset${combined > 3 ? ` +${combined - 3}` : ''}`
