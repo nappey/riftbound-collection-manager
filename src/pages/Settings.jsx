@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSync } from '../sync/SyncContext';
+import { useGame } from '../games/GameContext';
 import { useDiscord } from '../discord/DiscordContext';
 import CheckForUpdatesButton from '../components/CheckForUpdatesButton';
 import ExportButton from '../components/ExportButton';
@@ -235,7 +236,53 @@ function AppearanceSection() {
   );
 }
 
-export default function Settings({ allCards, collection, foilCollection, onImport }) {
+function CardLibrarySection({ cardCount, onReload }) {
+  const game = useGame();
+  const [busy, setBusy] = useState(null); // 'reload' | 'clear' while running
+  const [progress, setProgress] = useState(null);
+  const [status, setStatus] = useState(null);
+
+  const run = async (kind) => {
+    setBusy(kind);
+    setStatus(null);
+    setProgress(null);
+    try {
+      const n = await onReload({ clearCache: kind === 'clear', onProgress: (done, total) => setProgress({ done, total }) });
+      setStatus(`${kind === 'clear' ? 'Cache cleared — loaded' : 'Loaded'} ${n} cards.`);
+    } catch (e) {
+      setStatus(`Couldn't load cards: ${e?.message ?? e}. ${kind === 'clear' ? 'The cache was cleared; the current cards stay until the next launch.' : 'Kept the current cards.'}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+  const working = progress ? `Loading… ${progress.done}/${progress.total}` : 'Loading…';
+
+  return (
+    <>
+      <p className="settings-note">
+        {game.label} cards are saved on this device so the app opens fast, and refreshed in the background on launch.
+        Reload to pull the latest cards and prices now; clear the cache if cards look wrong or out of date.
+        Your collection isn't affected.
+      </p>
+      <div className="settings-row">
+        <span className="settings-label">Cards loaded</span>
+        <span>{cardCount}</span>
+      </div>
+      <div className="settings-actions">
+        <button className="btn" onClick={() => run('reload')} disabled={!!busy}>
+          {busy === 'reload' ? working : 'Reload card library'}
+        </button>
+        <button className="btn ghost danger" onClick={() => run('clear')} disabled={!!busy}
+          title="Delete the saved card lists for every game, then reload">
+          {busy === 'clear' ? working : 'Clear cache & reload'}
+        </button>
+      </div>
+      {status && <p className="settings-note small">{status}</p>}
+    </>
+  );
+}
+
+export default function Settings({ allCards, collection, foilCollection, onImport, onReloadCards }) {
   const [version, setVersion] = useState(null);
   useEffect(() => {
     window.__electron__?.appVersion?.().then(setVersion).catch(() => {});
@@ -262,6 +309,11 @@ export default function Settings({ allCards, collection, foilCollection, onImpor
       <section className="settings-card">
         <h2>Discord</h2>
         <DiscordSection />
+      </section>
+
+      <section className="settings-card">
+        <h2>Card library</h2>
+        <CardLibrarySection cardCount={allCards.length} onReload={onReloadCards} />
       </section>
 
       <section className="settings-card">

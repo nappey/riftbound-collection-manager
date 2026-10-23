@@ -26,7 +26,7 @@ import { DiscordProvider, useDiscord } from './discord/DiscordContext';
 import { GAMES, GAME_IDS, DEFAULT_GAME, getGame } from './games';
 import { GameContext } from './games/GameContext';
 import { storageKeys, ACTIVE_GAME_KEY } from './games/storage';
-import { getCached, setCached, loadStoredCards, storeCards } from './games/cardCache';
+import { getCached, setCached, loadStoredCards, storeCards, clearAllCached } from './games/cardCache';
 import MerchantBtn from './components/MerchantBtn';
 import { completePrices } from './utils/analysis';
 import { remapKeys, remapDecks, remapMerchant } from './utils/remapIds';
@@ -358,6 +358,26 @@ function GameApp({ game, onSwitchGame }) {
         .catch(() => setPricesLoading(false));
     }
   }, [game, TCGCSV_BASE, idMap, setRiftboundCards]);
+
+  // Settings → Card library: fetch a fresh card list + prices. The current
+  // cards stay on screen until the new ones arrive, so a failed reload leaves
+  // the app usable. `clearCache` first drops every game's saved card list.
+  const reloadCards = useCallback(async ({ clearCache = false, onProgress } = {}) => {
+    if (clearCache) await clearAllCached();
+    const cards = await game.api.loadCards(
+      { isElectron: IS_ELECTRON, tcgcsvBase: TCGCSV_BASE, netdeckBase: NETDECK_BASE, riotBase: RIOT_BASE },
+      onProgress);
+    setCached(game.id, { cards });
+    storeCards(game.id, cards);
+    if (game.id === 'riftbound') setRiftboundCards(cards);
+    setAllCards(cards);
+    setPricesLoading(true);
+    game.prices.load(TCGCSV_BASE)
+      .then((raw) => { const map = completePrices(raw); setCached(game.id, { prices: map }); setPrices(map); })
+      .catch(() => { /* keep the old prices */ })
+      .finally(() => setPricesLoading(false));
+    return cards.length;
+  }, [game, TCGCSV_BASE, setRiftboundCards]);
 
   // Netdeck serves signed image URLs that expire after a few hours. When the
   // window comes back into focus after a long idle, silently refetch the card
@@ -821,6 +841,7 @@ function GameApp({ game, onSwitchGame }) {
                 collection={collection}
                 foilCollection={foilCollection}
                 onImport={handleImport}
+                onReloadCards={reloadCards}
               />
             ) : tab === 'export' ? (
               <Export

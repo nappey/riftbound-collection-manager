@@ -46,3 +46,16 @@ export async function storeCards(gameId, cards) {
     db.transaction(STORE, 'readwrite').objectStore(STORE).put(cards, gameId);
   } catch { /* cache is best-effort */ }
 }
+
+/** Forget every game's cards + prices — in memory and on disk. */
+export async function clearAllCached() {
+  cache.clear();
+  try {
+    const db = await openDb();
+    await new Promise((resolve) => {
+      const tx = db.transaction(STORE, 'readwrite');
+      tx.objectStore(STORE).clear();
+      tx.oncomplete = tx.onerror = tx.onabort = () => resolve();
+    });
+  } catch { /* cache is best-effort */ }
+}
