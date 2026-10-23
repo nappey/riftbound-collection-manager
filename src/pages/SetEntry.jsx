@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react';
-import { isAlwaysFoil, isSingleton, isBattlefield } from '../utils/playset';
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
+import { isAlwaysFoil, isSingleton, isBattlefield, playsetTarget } from '../utils/playset';
 import { printingKey } from '../utils/printings';
 import { useGame } from '../games/GameContext';
-import { entryProgressKey } from '../games/storage';
+import { entryProgressKey, ENTRY_VIEW_KEY } from '../games/storage';
 import './setEntry.css';
 
 const Sparkle = () => (
@@ -65,7 +65,7 @@ function sortByEnergy(cards) {
 
 // ── Config screen ──────────────────────────────────────────────
 
-function ConfigScreen({ allCards, onStart }) {
+function ConfigScreen({ allCards, view, onViewChange, onStart }) {
   const game = useGame();
   const SET_LABELS = game.setLabels;
   const factionLabel = game.faction.label;
@@ -169,6 +169,10 @@ function ConfigScreen({ allCards, onStart }) {
           <span style={{color: 'var(--text-2)', fontSize: 13}}>
             {cardCount > 0 ? `${cardCount} cards in this slice` : `Select a set and ${factionLabel.toLowerCase()}`}
           </span>
+          <div className="seg se-view-toggle" title="Step through one card at a time, or tap cards in a grid">
+            <button className={view === 'step' ? 'active' : ''} onClick={() => onViewChange('step')}>Step</button>
+            <button className={view === 'grid' ? 'active' : ''} onClick={() => onViewChange('grid')}>Grid</button>
+          </div>
           <button
             className="btn-primary"
             onClick={handleStart}
@@ -467,12 +471,122 @@ function CardEntryScreen({
   );
 }
 
+// ── Grid entry screen ──────────────────────────────────────────
+
+// Owned copies that count toward this card's playset (always-foil cards only
+// come foiled, so their normal count doesn't apply).
+function ownedCount(card, collection, foilCollection) {
+  const foil = foilCollection[card.id] ?? 0;
+  return isAlwaysFoil(card) ? foil : (collection[card.id] ?? 0) + foil;
+}
+
+function GridEntryScreen({ cards, setLabel, domain, collection, foilCollection, onAdjust, onAdjustFoil, onDone, showCardSet = false }) {
+  const game = useGame();
+  const SET_LABELS = game.setLabels;
+  // Counts each card had before it was marked here, so tapping it again
+  // undoes the mark instead of wiping copies that were already entered.
+  const before = useRef(new Map());
+
+  const done = cards.filter(c => ownedCount(c, collection, foilCollection) >= playsetTarget(c)).length;
+
+  function toggle(card) {
+    const count = collection[card.id] ?? 0;
+    const foil = foilCollection[card.id] ?? 0;
+    const target = playsetTarget(card);
+    const setTo = (n, f) => {
+      if (n !== count) onAdjust(card.id, n - count);
+      if (f !== foil) onAdjustFoil(card.id, f - foil);
+    };
+    if (ownedCount(card, collection, foilCollection) >= target) {
+      const prev = before.current.get(card.id) ?? { count: 0, foil: 0 };
+      before.current.delete(card.id);
+      setTo(prev.count, prev.foil);
+    } else {
+      before.current.set(card.id, { count, foil });
+      if (isAlwaysFoil(card)) setTo(count, target);
+      else setTo(target - foil, foil);
+    }
+  }
+
+  return (
+    <div className="se-grid-wrap">
+      <div className="entry-progress-row">
+        <button className="btn ghost" style={{fontSize: 11}} onClick={onDone}>
+          <ArrowLeft /> Back
+        </button>
+        <span className="se-pill set-pill">{setLabel}</span>
+        <span className="se-pill">
+          <span className="dot" style={{'--c': domainColor(domain, game.faction.values)}}></span>
+          {domainLabel(domain)}
+        </span>
+        <div className="entry-progress-bar" style={{flex: 1}}>
+          <div className="fill" style={{width: `${(done / cards.length) * 100}%`}}></div>
+        </div>
+        <span className="entry-pos">{done} / {cards.length} playsets</span>
+      </div>
+
+      <p className="se-grid-hint">Tap a card to mark a playset. Tap it again to undo.</p>
+
+      <div className="se-grid">
+        {cards.map(card => {
+          const owned = ownedCount(card, collection, foilCollection);
+          const target = playsetTarget(card);
+          const complete = owned >= target;
+          const img = card.media?.image_url;
+          const art = img
+            ? <img src={img} alt="" loading="lazy" />
+            : <div className="entry-art-placeholder">{card.name}</div>;
+          return (
+            <button
+              key={card.id}
+              className={`se-grid-card${complete ? ' flipped' : ''}`}
+              onClick={() => toggle(card)}
+              aria-pressed={complete}
+              title={card.name}
+            >
+              <div className="se-flip">
+                <div className="se-face se-front">{art}</div>
+                <div className="se-face se-back">
+                  {art}
+                  <span className="se-check"><Check /></span>
+                </div>
+              </div>
+              <div className="se-grid-meta">
+                <span className="se-grid-name">{card.name}</span>
+                {showCardSet && <span className="se-grid-set">{SET_LABELS[card.set?.set_id] ?? card.set?.set_id}</span>}
+                {owned > 0 && (
+                  <span className={`se-grid-count${complete ? ' ok' : ''}`}>
+                    {complete ? `${target === 1 ? 'Have' : 'Playset'}${owned > target ? ` +${owned - target}` : ''}` : `${owned}/${target}`}
+                  </span>
+                )}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="se-grid-foot">
+        <button className="btn-primary" onClick={onDone} style={{background: 'var(--ok)'}}>
+          <Check /> Done
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Page root ──────────────────────────────────────────────────
 
 export default function SetEntry({ allCards, collection, foilCollection, onAdjust, onAdjustFoil, promoByName = {}, promoShortLabels = {} }) {
   const game = useGame();
   const SET_LABELS = game.setLabels;
   const [session, setSession] = useState(null);
+  const [view, setViewRaw] = useState(() => {
+    try { return localStorage.getItem(ENTRY_VIEW_KEY) === 'grid' ? 'grid' : 'step'; } catch { return 'step'; }
+  });
+  const setView = (v) => {
+    setViewRaw(v);
+    try { localStorage.setItem(ENTRY_VIEW_KEY, v); } catch { /* storage unavailable */ }
+  };
   // Alternate Art printings by the set + card they're an alternate of.
   const altArtsByKey = useMemo(() => {
     const map = {};
@@ -501,7 +615,28 @@ export default function SetEntry({ allCards, collection, foilCollection, onAdjus
     return (
       <ConfigScreen
         allCards={allCards}
+        view={view}
+        onViewChange={setView}
         onStart={(cards, setId, domain) => setSession({ cards, setId, domain, key: `${setId}:${domain}` })}
+      />
+    );
+  }
+
+  const setLabel = session.setId === ALL_SETS ? 'All sets' : (SET_LABELS[session.setId] ?? session.setId);
+
+  if (view === 'grid') {
+    return (
+      <GridEntryScreen
+        key={session.key}
+        cards={session.cards}
+        setLabel={setLabel}
+        showCardSet={session.setId === ALL_SETS}
+        domain={session.domain}
+        collection={collection}
+        foilCollection={foilCollection}
+        onAdjust={onAdjust}
+        onAdjustFoil={onAdjustFoil}
+        onDone={() => setSession(null)}
       />
     );
   }
@@ -510,7 +645,7 @@ export default function SetEntry({ allCards, collection, foilCollection, onAdjus
     <CardEntryScreen
       key={session.key}
       cards={session.cards}
-      setLabel={session.setId === ALL_SETS ? 'All sets' : (SET_LABELS[session.setId] ?? session.setId)}
+      setLabel={setLabel}
       showCardSet={session.setId === ALL_SETS}
       domain={session.domain}
       collection={collection}

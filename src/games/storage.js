@@ -13,6 +13,8 @@ export const DISPLAY_NAME_KEY = 'card-manager-display-name'; // shown to friends
 export const DISCORD_LINK_KEY = 'card-manager-discord-link';
 // Set Entry: how far into each set + domain slice you got, per game and device.
 export const entryProgressKey = (gameId) => `card-manager-entry-progress:${gameId}`;
+// Set Entry: step-through or grid view, per device.
+export const ENTRY_VIEW_KEY = 'card-manager-entry-view';
 
 export function storageKeys(gameId) {
   const p = gameId; // 'riftbound' → the legacy keys below, byte-for-byte
