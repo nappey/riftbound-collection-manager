@@ -4,46 +4,98 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Riftbound Thumbnail Maker</title>
-<meta name="description" content="Make a 1280×720 YouTube thumbnail for a Riftbound match: two legend images, player names and VS. Runs entirely in your browser." />
+<meta name="description" content="Make a 1280×720 YouTube VS thumbnail for Riftbound: an image, headline and tag on each side, three layouts, fonts and text effects. Runs entirely in your browser." />
 <link rel="icon" type="image/png" href="../favicon.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Anton&family=Cinzel:wght@900&family=Oswald:wght@700&family=Bangers&family=Teko:wght@600&family=Russo+One&family=Archivo+Black&display=swap" />
 <link rel="stylesheet" href="../style.css" />
 <link rel="stylesheet" href="thumbnail.css" />
 </head>
 <body>
   <header class="site-header">
-    <div class="brand">Riftbound <span class="muted">/ Thumbnail Maker</span></div>
+    <div class="tm-brand">
+      <span class="tm-logo-mark" aria-hidden="true"></span>
+      <div class="brand">Riftbound <span class="muted">/ Thumbnail Maker</span></div>
+      <span class="tm-pill">YouTube 1280×720</span>
+    </div>
     <nav class="header-actions">
       <a class="btn ghost" href="../">Set Entry</a>
-      <button id="btn-copy" class="btn" title="Copy the thumbnail image to the clipboard">Copy image</button>
-      <button id="btn-download" class="btn primary" title="Download a 1280×720 PNG">Download PNG</button>
+      <button id="btn-swap" class="btn" type="button">⇄ Swap sides</button>
+      <button id="btn-reset" class="btn" type="button">Reset</button>
+      <button id="btn-copy" class="btn" type="button" title="Copy the thumbnail image to the clipboard">Copy image</button>
+      <button id="btn-download" class="btn primary" type="button" title="Download a 1280×720 PNG">Export PNG</button>
     </nav>
   </header>
 
   <main class="tm">
-    <section class="tm-stage">
+    <!-- Side panels are filled from the template below (one per side). -->
+    <aside class="tm-side" id="side-a" data-side="a"></aside>
+    <aside class="tm-side" id="side-b" data-side="b"></aside>
+
+    <section class="tm-preview">
+      <div class="tm-preview-head"><span>PREVIEW</span><i></i><span>drag to pan · scroll to zoom · drop images onto either side</span></div>
       <div class="tm-canvas-wrap" id="canvas-wrap">
         <canvas id="thumb" width="1280" height="720" aria-label="Thumbnail preview"></canvas>
-        <div class="tm-drop-hint" id="drop-hint" hidden><span>Drop to place on the <b id="drop-side">left</b></span></div>
+        <div class="tm-safe" id="safe-zone" hidden>18:42</div>
+        <div class="tm-drop-hint" id="drop-hint" hidden><span>Drop to place on side <b id="drop-side">A</b></span></div>
       </div>
-      <p class="tm-hint">Drag an image to move it · scroll (or use the slider) to zoom · drop image files onto either side. Nothing leaves your computer.</p>
     </section>
 
-    <aside class="tm-panel">
-      <fieldset class="tm-group">
-        <legend>Presets</legend>
-        <div class="tm-presets" id="presets"></div>
-      </fieldset>
+    <div class="tm-glob">
+      <section class="tm-card">
+        <div class="tm-card-head"><span class="tm-label">FONT</span><span class="tm-card-sub" id="font-name"></span></div>
+        <div class="tm-fonts" id="fonts"></div>
+        <div class="tm-slider"><span>Size</span><input type="range" id="size" min="60" max="150" /><output id="size-out"></output></div>
+        <div class="tm-slider"><span>Outline</span><input type="range" id="outline" min="0" max="16" /><output id="outline-out"></output></div>
+        <div class="tm-slider"><span>Spacing</span><input type="range" id="spacing" min="-5" max="25" /><output id="spacing-out"></output></div>
+        <div class="tm-slider"><span>Slant</span><input type="range" id="slant" min="0" max="20" /><output id="slant-out"></output></div>
+        <div class="tm-colors">
+          <label class="tm-field tm-inline">Text <input type="color" id="text-color" /></label>
+          <label class="tm-field tm-inline">Outline <input type="color" id="outline-color" /></label>
+        </div>
+        <label class="tm-check"><input type="checkbox" id="upper" /> UPPERCASE</label>
+        <span class="tm-label">YOUR FONTS</span>
+        <div class="tm-row">
+          <input class="tm-input" type="text" id="font-custom" placeholder="Installed font name" />
+          <button class="btn primary" id="font-add" type="button">Add</button>
+        </div>
+        <div class="tm-row">
+          <label class="btn tm-grow" for="font-file">Upload font file</label>
+          <input type="file" id="font-file" accept=".ttf,.otf,.woff,.woff2" hidden />
+          <button class="btn tm-grow" id="font-browse" type="button" hidden>Browse installed</button>
+        </div>
+        <select class="tm-input" id="font-local" hidden></select>
+      </section>
 
-      <fieldset class="tm-group">
-        <legend>Team logo</legend>
-        <div class="tm-side-head">
+      <section class="tm-card">
+        <span class="tm-label">LAYOUT</span>
+        <div class="tm-layouts" id="layouts"></div>
+        <span class="tm-label">TEXT EFFECT</span>
+        <div class="tm-seg" id="effects"></div>
+        <label class="tm-field">Middle word <input class="tm-input" type="text" id="vs" maxlength="6" /></label>
+      </section>
+
+      <section class="tm-card">
+        <span class="tm-label">TOP BANNER</span>
+        <input class="tm-input tm-input-lg" type="text" id="banner" maxlength="60" placeholder="Leave empty to hide" />
+        <div class="tm-chips" id="banner-presets"></div>
+        <label class="tm-check tm-push"><input type="checkbox" id="safe" /> Show timestamp safe zone</label>
+      </section>
+
+      <section class="tm-card">
+        <span class="tm-label">COLOR PRESETS</span>
+        <div class="tm-chips" id="presets"></div>
+        <label class="tm-field tm-inline">Background <input type="color" id="bg" /></label>
+        <span class="tm-label">TEAM LOGO</span>
+        <div class="tm-row">
           <span class="tm-logo-thumb" id="logo-thumb">None</span>
           <label class="btn" for="logo-file">Choose logo…</label>
           <input type="file" id="logo-file" accept="image/*" hidden />
-          <button class="btn ghost" id="logo-clear" hidden>Remove</button>
+          <button class="btn ghost" id="logo-clear" type="button" hidden>Remove</button>
         </div>
         <label class="tm-field">Position
-          <select id="logo-pos">
+          <select class="tm-input" id="logo-pos">
             <option value="center">Middle (replaces VS)</option>
             <option value="top">Top center</option>
             <option value="bottom">Bottom center</option>
@@ -53,74 +105,47 @@
             <option value="bottom-right">Bottom right</option>
           </select>
         </label>
-        <label class="tm-field tm-inline">Size <input type="range" id="logo-size" min="60" max="260" step="2" value="130" /></label>
-      </fieldset>
-
-      <fieldset class="tm-group">
-        <legend>Legends</legend>
-        <div class="tm-side" data-side="left">
-          <div class="tm-side-head">
-            <span>Left</span>
-            <label class="btn" for="img-left">Choose image…</label>
-            <input type="file" id="img-left" accept="image/*" hidden />
-            <button class="btn ghost tm-clear" data-clear="left" hidden>Remove</button>
-          </div>
-          <label class="tm-field tm-inline">Zoom <input type="range" id="zoom-left" min="1" max="3" step="0.01" value="1" /></label>
-          <label class="tm-check"><input type="checkbox" id="flip-left" /> Mirror</label>
-        </div>
-        <div class="tm-side" data-side="right">
-          <div class="tm-side-head">
-            <span>Right</span>
-            <label class="btn" for="img-right">Choose image…</label>
-            <input type="file" id="img-right" accept="image/*" hidden />
-            <button class="btn ghost tm-clear" data-clear="right" hidden>Remove</button>
-          </div>
-          <label class="tm-field tm-inline">Zoom <input type="range" id="zoom-right" min="1" max="3" step="0.01" value="1" /></label>
-          <label class="tm-check"><input type="checkbox" id="flip-right" /> Mirror</label>
-        </div>
-      </fieldset>
-
-      <fieldset class="tm-group">
-        <legend>Players</legend>
-        <label class="tm-field">Left player <input type="text" id="p1" maxlength="40" value="Player One" /></label>
-        <label class="tm-field">Right player <input type="text" id="p2" maxlength="40" value="Player Two" /></label>
-        <label class="tm-field">Middle word <input type="text" id="vs" maxlength="6" value="VS" /></label>
-        <label class="tm-field">Event line (optional) <input type="text" id="event" maxlength="60" placeholder="e.g. Radiance Launch · Top 8" /></label>
-      </fieldset>
-
-      <fieldset class="tm-group">
-        <legend>Font</legend>
-        <label class="tm-field">Family
-          <select id="font-select"></select>
-        </label>
-        <label class="tm-field">…or type any installed font <input type="text" id="font-custom" placeholder="e.g. Bebas Neue" /></label>
-        <div class="tm-row">
-          <button class="btn" id="btn-local-fonts" type="button">Use my installed fonts</button>
-          <span class="tm-note" id="font-note"></span>
-        </div>
-        <div class="tm-row">
-          <label class="tm-check"><input type="checkbox" id="bold" checked /> Bold</label>
-          <label class="tm-check"><input type="checkbox" id="italic" /> Italic</label>
-          <label class="tm-check"><input type="checkbox" id="upper" checked /> UPPERCASE</label>
-        </div>
-      </fieldset>
-
-      <fieldset class="tm-group">
-        <legend>Colors</legend>
-        <div class="tm-colors">
-          <label>Names <input type="color" id="c-text" value="#ffffff" /></label>
-          <label>VS <input type="color" id="c-vs" value="#ffc23d" /></label>
-          <label>Accent <input type="color" id="c-accent" value="#3d9bff" /></label>
-          <label>Background <input type="color" id="c-bg" value="#0b1020" /></label>
-          <label>Outline <input type="color" id="c-stroke" value="#05070f" /></label>
-        </div>
-        <label class="tm-field tm-inline">Outline width <input type="range" id="stroke" min="0" max="16" step="1" value="8" /></label>
-        <label class="tm-check"><input type="checkbox" id="glow" checked /> Glow</label>
-      </fieldset>
-
-      <button class="btn ghost" id="btn-reset" type="button">Reset everything</button>
-    </aside>
+        <div class="tm-slider"><span>Size</span><input type="range" id="logo-size" min="60" max="260" step="2" /><output id="logo-size-out"></output></div>
+      </section>
+    </div>
   </main>
+
+  <template id="side-tpl">
+    <div class="tm-side-head">
+      <i class="tm-dot"></i><b class="tm-side-label"></b><span class="tm-side-key"></span>
+    </div>
+    <div class="tm-side-body">
+      <label class="tm-drop">
+        <input type="file" accept="image/*" class="js-file" hidden />
+        <img class="tm-drop-img" alt="" hidden />
+        <span class="tm-drop-replace" hidden>Replace</span>
+        <span class="tm-drop-empty"><b>Upload image</b><small>click or drop · board, card, face</small></span>
+      </label>
+
+      <div class="tm-section">
+        <span class="tm-label">IMAGE</span>
+        <div class="tm-slider"><span>Zoom</span><input type="range" class="js-zoom" min="50" max="250" /><output class="js-zoom-out"></output></div>
+        <div class="tm-slider"><span>X</span><input type="range" class="js-x" min="-40" max="40" /><output class="js-x-out"></output></div>
+        <div class="tm-slider"><span>Y</span><input type="range" class="js-y" min="-40" max="40" /><output class="js-y-out"></output></div>
+        <button class="btn tm-block js-fit" type="button"></button>
+        <div class="tm-row">
+          <button class="btn tm-grow js-flip" type="button">Flip ↔</button>
+          <button class="btn tm-grow js-clear" type="button">Remove</button>
+        </div>
+      </div>
+
+      <div class="tm-section">
+        <span class="tm-label">TEXT</span>
+        <input class="tm-input tm-input-lg js-title" type="text" maxlength="40" placeholder="Headline" />
+        <input class="tm-input js-sub" type="text" maxlength="50" placeholder="Tag · deck, player, turn" />
+      </div>
+
+      <div class="tm-section">
+        <span class="tm-label">SIDE COLOR</span>
+        <div class="tm-swatches js-swatches"></div>
+      </div>
+    </div>
+  </template>
 
   <div id="toast" class="toast" hidden></div>
 
