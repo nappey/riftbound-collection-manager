@@ -1,31 +1,34 @@
+const nameKey = (card) => (card.metadata?.clean_name ?? card.name)
+  .toLowerCase()
+  .replace(/\s*alternate\s*art\s*/gi, '')
+  .trim();
+
+// "rad-109a-167" → "rad-109-167": the base print an alt art belongs to.
+const baseIdOf = (id) => id?.replace(/^([a-z0-9]+-[a-z]*\d+)[a-z](?=-|$)/, '$1');
+
+// Each alt attaches to exactly one base — the print it was drawn from (by id),
+// else the first base with the same name. Two bases can share a name (Radiance
+// "Evelynn - In Control" is both #109 and the special print SP3), and attaching
+// the alt to both renders it twice under one React key.
 export function groupWithAlts(cards) {
-  const altsByBase = {};
-  const bases = [];
+  const alts = [];
+  const groups = [];
+  const byId = new Map();
+  const byName = new Map();
 
   for (const card of cards) {
-    if (card.metadata?.alternate_art) {
-      const baseKey = (card.metadata.clean_name ?? card.name)
-        .toLowerCase()
-        .replace(/\s*alternate\s*art\s*/gi, '')
-        .trim();
-      (altsByBase[baseKey] = altsByBase[baseKey] || []).push(card);
-    } else {
-      bases.push(card);
-    }
+    if (card.metadata?.alternate_art) { alts.push(card); continue; }
+    const group = { base: card, alts: [] };
+    groups.push(group);
+    byId.set(card.id, group);
+    const key = nameKey(card);
+    if (!byName.has(key)) byName.set(key, group);
   }
 
-  const matchedAltIds = new Set();
-  const groups = bases.map((base) => {
-    const key = (base.metadata?.clean_name ?? base.name).toLowerCase().trim();
-    const alts = altsByBase[key] ?? [];
-    alts.forEach((a) => matchedAltIds.add(a.id));
-    return { base, alts };
-  });
-
-  for (const alts of Object.values(altsByBase)) {
-    for (const alt of alts) {
-      if (!matchedAltIds.has(alt.id)) groups.push({ base: alt, alts: [] });
-    }
+  for (const alt of alts) {
+    const group = byId.get(baseIdOf(alt.id)) ?? byName.get(nameKey(alt));
+    if (group) group.alts.push(alt);
+    else groups.push({ base: alt, alts: [] });
   }
 
   return groups;
