@@ -263,20 +263,29 @@ const deck = {
     { key: 'sb', ok: analysis.sideboardCount <= SIDEBOARD_MAX, over: analysis.sideboardCount > SIDEBOARD_MAX, label: `SB ${analysis.sideboardCount}/${SIDEBOARD_MAX}` },
   ],
   buildDecklistText: ({ deck: d, analysis, identityCards, champion, bonusCards }) => {
+    // Plain card names: an Alt Art / Signature / Special Art printing exports as
+    // its base card, which is what other sites (and our importer) read.
+    const name = (c) => c.name.replace(rules.VARIANT_SUFFIX, '').trim();
+    // One line per card: two printings of the same card merge their counts.
+    const lines = (rows) => {
+      const qty = new Map();
+      for (const { card, qty: n } of rows) qty.set(name(card), (qty.get(name(card)) ?? 0) + n);
+      return [...qty].map(([n, q]) => `${q} ${n}\n`).join('');
+    };
     let out = '';
     // Neeko's extra legends follow the starting legend; the importer reads the
     // first legend as the starting one and the rest as Neeko's picks.
     const legends = identityCards[0] ? [identityCards[0], ...(bonusCards ?? [])] : [];
-    if (legends.length) out += `Legend:\n${legends.map(c => `1 ${c.name}`).join('\n')}\n\n`;
-    if (champion) out += `Champion:\n1 ${champion.name}\n\n`;
+    if (legends.length) out += `Legend:\n${legends.map(c => `1 ${name(c)}`).join('\n')}\n\n`;
+    if (champion) out += `Champion:\n1 ${name(champion)}\n\n`;
     if (analysis.mainRows.length) {
       out += 'MainDeck:\n';
-      for (const { card, qty } of analysis.mainRows) out += `${qty} ${card.name}\n`;
+      out += lines(analysis.mainRows);
       out += '\n';
     }
     if (analysis.battlefieldRows.length) {
       out += 'Battlefields:\n';
-      for (const { card, qty } of analysis.battlefieldRows) out += `${qty} ${card.name}\n`;
+      out += lines(analysis.battlefieldRows);
       out += '\n';
     }
     const runeEntries = Object.entries(d.runes).filter(([, n]) => n > 0);
@@ -287,7 +296,7 @@ const deck = {
     }
     if (analysis.sideboardRows.length) {
       out += 'Sideboard:\n';
-      for (const { card, qty } of analysis.sideboardRows) out += `${qty} ${card.name}\n`;
+      out += lines(analysis.sideboardRows);
       out += '\n';
     }
     return out.trimEnd();

@@ -17,7 +17,7 @@ const ALT_RE = /^[a-z0-9]+-[a-z]*\d+[a-z]-?/;
 // exports use "unl-229*-219".
 const normalizeId = (id) => id.replace('-star-', '*-');
 
-function toRiftcodexShape(raw) {
+function toRiftcodexShape(raw, champions = new Set()) {
   const c = { ...raw, id: normalizeId(raw.id) };
   const type = c.cardType?.type?.[0]?.label ?? null;
   const supertype = c.cardType?.superType?.[0]?.label ?? null;
@@ -27,10 +27,13 @@ function toRiftcodexShape(raw) {
   const tags = c.tags?.tags ?? [];
   const subtitle = c.subtitle?.trim();
   // riftcodex names cards "Name - Subtitle"; Riot titles legends by epithet
-  // alone ("Agony's Embrace") with the champion only in tags.
+  // alone ("Agony's Embrace") with the champion only in tags — not always the
+  // first one (Ziggs is tagged ["Yordle", "Ziggs"]), so prefer a tag that's a
+  // champion's name.
   let name = c.name;
+  const champ = tags.find((t) => champions.has(t)) ?? tags[0];
   if (subtitle) name = `${c.name} - ${subtitle}`;
-  else if (type === 'Legend' && tags[0]) name = `${tags[0]} - ${c.name}`;
+  else if (type === 'Legend' && champ) name = `${champ} - ${c.name}`;
   const sigVariant = c.id.includes('*');
   // "rad-sp1-005": Radiance's K/DA Special Art showcases share their base
   // champion's name — label them so they don't read as duplicates.
@@ -107,7 +110,11 @@ export async function fetchRiotCards(riotBase, exclude = new Set(), { timeoutMs 
     const m = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
     if (!m) throw new Error('Riot gallery: no __NEXT_DATA__');
     const raw = findCardArray(JSON.parse(m[1])) ?? [];
-    return raw.filter((c) => !exclude.has(c.set?.value?.id) && isCollectible(c)).map(toRiftcodexShape);
+    // Champion unit names ("Ziggs") — what a legend's name is built from.
+    const champions = new Set(raw
+      .filter((c) => c.cardType?.superType?.some((s) => s.label === 'Champion'))
+      .map((c) => c.name));
+    return raw.filter((c) => !exclude.has(c.set?.value?.id) && isCollectible(c)).map((c) => toRiftcodexShape(c, champions));
   } finally {
     clearTimeout(timer);
   }
