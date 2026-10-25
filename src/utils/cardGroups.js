@@ -1,13 +1,15 @@
-const nameKey = (card) => (card.metadata?.clean_name ?? card.name)
+// Same name within the same set — so in the All sets view an alt never lands
+// on a reprint from another set.
+const nameKey = (card) => `${card.set?.set_id}|${(card.metadata?.clean_name ?? card.name)
   .toLowerCase()
   .replace(/\s*alternate\s*art\s*/gi, '')
-  .trim();
+  .trim()}`;
 
 // "rad-109a-167" → "rad-109-167": the base print an alt art belongs to.
-const baseIdOf = (id) => id?.replace(/^([a-z0-9]+-[a-z]*\d+)[a-z](?=-|$)/, '$1');
+export const baseIdOf = (id) => id?.replace(/^([a-z0-9]+-[a-z]*\d+)[a-z](?=-|$)/, '$1');
 
 // Each alt attaches to exactly one base — the print it was drawn from (by id),
-// else the first base with the same name. Two bases can share a name (Radiance
+// else the first base in its set with the same name. Two bases can share a name (Radiance
 // "Evelynn - In Control" is both #109 and the special print SP3), and attaching
 // the alt to both renders it twice under one React key.
 export function groupWithAlts(cards) {

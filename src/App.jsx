@@ -135,6 +135,7 @@ function totalCollectionValue(cards, collection, foilCollection, prices) {
 
 const DEFAULT_FILTERS = { search: '', type: '', rarity: '', domain: '', status: 'all' };
 const DEFAULT_SORT = { field: 'collector_number', dir: 'asc' };
+const ALL_SETS = 'all'; // set-picker id for every set in one grid
 
 // SVG icons
 const SearchIcon = () => (
@@ -561,6 +562,9 @@ function GameApp({ game, onSwitchGame }) {
     const allPromos = allCards.filter(c => game.promoFoldSets.has(c.set?.set_id) && c.classification?.type !== 'Rune');
     const promosOwned = allPromos.filter(c => (collection[c.id] ?? 0) + (foilCollection[c.id] ?? 0) > 0).length;
     m['promos'] = { total: allPromos.length, owned: promosOwned, pct: allPromos.length ? Math.round(promosOwned / allPromos.length * 100) : 0 };
+    // Every set at once
+    const allOwned = allNonFolded.filter(c => (collection[c.id] ?? 0) + (foilCollection[c.id] ?? 0) > 0).length;
+    m[ALL_SETS] = { total: allNonFolded.length, owned: allOwned, pct: allNonFolded.length ? Math.round(allOwned / allNonFolded.length * 100) : 0 };
     return m;
   }, [allCards, collection, foilCollection, game]);
 
@@ -578,12 +582,23 @@ function GameApp({ game, onSwitchGame }) {
   const setIds = Object.keys(cardsBySet);
   const totalVisible = setIds.reduce((n, id) => n + cardsBySet[id].cards.length, 0);
   const currentSetId = (activeSetId === 'runes' || activeSetId === 'promos') ? activeSetId
+    : activeSetId === ALL_SETS && setIds.length ? ALL_SETS
     : setIds.includes(activeSetId) ? activeSetId
     : (setIds[0] ?? null);
+  const isAllSets = currentSetId === ALL_SETS;
+  // Cards shown for the picked set. All sets: in set order when sorted by
+  // number (else every set's #001 would sit together), otherwise one sort
+  // across all of them.
+  const currentCards = isAllSets
+    ? (sort.field === DEFAULT_SORT.field
+        ? setIds.flatMap(id => cardsBySet[id].cards)
+        : applySort(setIds.flatMap(id => cardsBySet[id].cards), sort, collection, game.rarityOrder))
+    : cardsBySet[currentSetId]?.cards;
 
-  // Entries for the set-picker dropdown: real sets first, then Rune Box / Promos.
+  // Entries for the set-picker dropdown: All sets, real sets, then Rune Box / Promos.
   const statOf = (id) => setTabStats[id] ?? { owned: 0, total: 0, pct: 0 };
   const setPickerEntries = [
+    { id: ALL_SETS, label: 'All sets', kind: 'all', ...statOf(ALL_SETS) },
     ...setIds.map(sid => ({
       id: sid,
       label: cardsBySet[sid].label,
@@ -605,7 +620,7 @@ function GameApp({ game, onSwitchGame }) {
   let setProgressStats = null;
   if (currentSetId && currentSetId !== 'runes' && currentSetId !== 'promos') {
     const allSetCards = allCards.filter(c =>
-      c.set?.set_id === currentSetId &&
+      (isAllSets || c.set?.set_id === currentSetId) &&
       c.classification?.type !== 'Rune' &&
       !game.promoFoldSets.has(c.set?.set_id)
     );
@@ -621,8 +636,8 @@ function GameApp({ game, onSwitchGame }) {
                  + (foilCollection[card.id] ?? 0) * (p.foil?.market ?? p.normal?.market ?? 0);
     }, 0) : null;
     setProgressStats = {
-      name: cardsBySet[currentSetId]?.label ?? currentSetId,
-      logo: game.features.setLogos[currentSetId] ?? null,
+      name: isAllSets ? 'All sets' : cardsBySet[currentSetId]?.label ?? currentSetId,
+      logo: isAllSets ? null : game.features.setLogos[currentSetId] ?? null,
       art: pickSetArt(allSetCards),
       playsets, partial, missing,
       total: allSetCards.length,
@@ -984,7 +999,7 @@ function GameApp({ game, onSwitchGame }) {
                         <span>Price</span>
                         <span>Qty</span>
                       </div>
-                      {cardsBySet[currentSetId].cards.map(card => (
+                      {currentCards.map(card => (
                         <ListRow
                           key={card.id}
                           card={card}
@@ -1001,9 +1016,9 @@ function GameApp({ game, onSwitchGame }) {
                   ) : (
                     <SetSection
                       key={currentSetId}
-                      setName={cardsBySet[currentSetId].label}
-                      promo={cardsBySet[currentSetId].promo}
-                      cards={cardsBySet[currentSetId].cards}
+                      setName={isAllSets ? 'All sets' : cardsBySet[currentSetId].label}
+                      promo={!isAllSets && cardsBySet[currentSetId].promo}
+                      cards={currentCards}
                       collection={collection}
                       foilCollection={foilCollection}
                       prices={prices}

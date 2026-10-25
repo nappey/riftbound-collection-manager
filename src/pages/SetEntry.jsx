@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
 import { isAlwaysFoil, isSingleton, isBattlefield, playsetTarget } from '../utils/playset';
 import { printingKey } from '../utils/printings';
+import { baseIdOf } from '../utils/cardGroups';
 import { useGame } from '../games/GameContext';
 import { entryProgressKey, ENTRY_VIEW_KEY } from '../games/storage';
 import './setEntry.css';
@@ -214,10 +215,15 @@ function CardEntryScreen({
   const foilCount   = foilCollection[card.id] ?? 0;
   const combined    = alwaysFoil ? foilCount : count + foilCount;
 
-  // Alt Arts belong on the base card's step, not on its Overnumbered/Signature step.
-  const isPremium = card.metadata?.overnumbered || card.metadata?.signature;
+  // Alt Arts belong on the base card's step, not on its Overnumbered /
+  // Signature / Special Art step.
+  const isPremium = card.metadata?.overnumbered || card.metadata?.signature || card.metadata?.special_art;
+  const cardAlts = isPremium ? [] : [
+    ...(altArtsByKey[card.id] ?? []),
+    ...(altArtsByKey[`${card.set?.set_id}|${printingKey(card)}`] ?? []),
+  ];
   const cardPromos = [
-    ...(isPremium ? [] : altArtsByKey[`${card.set?.set_id}|${printingKey(card)}`] ?? []).map(p => ({ p, label: 'Alt Art' })),
+    ...cardAlts.map(p => ({ p, label: 'Alt Art' })),
     ...(promoByName[card.name.toLowerCase().trim()] ?? []).map(p => ({ p, label: promoShortLabels[p.set?.set_id] ?? 'Promo' })),
   ].map(({ p, label }) => ({
     card: p,
@@ -587,12 +593,16 @@ export default function SetEntry({ allCards, collection, foilCollection, onAdjus
     setViewRaw(v);
     try { localStorage.setItem(ENTRY_VIEW_KEY, v); } catch { /* storage unavailable */ }
   };
-  // Alternate Art printings by the set + card they're an alternate of.
+  // Alternate Art printings by the card they're an alternate of: the print
+  // they were drawn from ("rad-109a-167" → id "rad-109-167"), else set + name.
+  // By id first so a same-named Special Art print doesn't ask about them too.
   const altArtsByKey = useMemo(() => {
+    const ids = new Set(allCards.map(c => c.id));
     const map = {};
     for (const c of allCards) {
       if (!c.metadata?.alternate_art || c.classification?.type === 'Rune') continue;
-      const key = `${c.set?.set_id}|${printingKey(c)}`;
+      const base = baseIdOf(c.id);
+      const key = ids.has(base) && base !== c.id ? base : `${c.set?.set_id}|${printingKey(c)}`;
       (map[key] = map[key] || []).push(c);
     }
     return map;

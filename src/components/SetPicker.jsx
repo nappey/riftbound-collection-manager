@@ -24,7 +24,7 @@ export default function SetPicker({ entries, currentId, onSelect }) {
     const q = query.trim().toLowerCase();
     const shown = q ? entries.filter((e) => e.label.toLowerCase().includes(q)) : entries;
     return {
-      sets: shown.filter((e) => e.kind === 'set' || e.kind === 'promoSet'),
+      sets: shown.filter((e) => e.kind === 'all' || e.kind === 'set' || e.kind === 'promoSet'),
       special: shown.filter((e) => e.kind === 'runes' || e.kind === 'promos'),
     };
   }, [entries, query]);
