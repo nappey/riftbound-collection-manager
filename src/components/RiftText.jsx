@@ -7,8 +7,39 @@
 //   :rb_rune_X:     → domain rune pip (X = body/calm/chaos/fury/mind/order/colorless)
 //   [Keyword]       → keyword pill (e.g. [Ganking], [Accelerate], [Assault 2])
 //   [>]             → arrow
+//
+// Icons are Riot's own glyphs, from the CDN playriftbound.com renders card text
+// with (`:rb_X:` → riot-glyphs/rb/latest/X.svg). If one can't load (offline,
+// or a token Riot has no glyph for) the drawn fallback below stands in.
 
+import { useState } from 'react';
 import { decodeEntities } from '../utils/riftText';
+
+const GLYPH_BASE = 'https://assetcdn.rgpub.io/public/live/riot-shared/player-experiences/riot-glyphs/rb/latest/';
+// Every text glyph Riot publishes for Riftbound.
+const RIOT_GLYPHS = new Set([
+  'might', 'exhaust', 'colorless',
+  ...['body', 'calm', 'chaos', 'fury', 'mind', 'order', 'rainbow'].map((d) => `rune_${d}`),
+  ...Array.from({ length: 13 }, (_, n) => `energy_${n}`),
+]);
+
+const glyphTitle = (name) => {
+  const [kind, arg] = name.split('_');
+  if (kind === 'energy') return `${arg} Energy`;
+  if (kind === 'rune') return arg === 'rainbow' ? 'Rune of any domain' : `${arg[0].toUpperCase() + arg.slice(1)} rune`;
+  return kind[0].toUpperCase() + kind.slice(1);
+};
+
+// Riot's glyph for `name`, or `fallback` if there isn't one or it fails to load.
+function Glyph({ name, fallback }) {
+  const [failed, setFailed] = useState(false);
+  if (failed || !RIOT_GLYPHS.has(name)) return fallback;
+  const title = glyphTitle(name);
+  return (
+    <img className="rb-ico rb-glyph" src={`${GLYPH_BASE}${name}.svg`} alt={title} title={title}
+      draggable={false} onError={() => setFailed(true)} />
+  );
+}
 
 const DOMAINS = new Set(['body', 'calm', 'chaos', 'fury', 'mind', 'order', 'colorless']);
 
@@ -62,12 +93,15 @@ function parseRift(text) {
   while ((m = TOKEN.exec(text))) {
     if (m.index > last) nodes.push(text.slice(last, m.index));
     last = m.index + m[0].length;
-    if (m[2] != null) nodes.push(<EnergyIcon key={key++} n={m[2]} />);
+    if (m[2] != null) nodes.push(<Glyph key={key++} name={`energy_${m[2]}`} fallback={<EnergyIcon n={m[2]} />} />);
     else if (m[3] != null) nodes.push(<SymIcon key={key++} kind="power" n={m[4]} />);
-    else if (m[5] != null) nodes.push(<SymIcon key={key++} kind="might" />);
-    else if (m[6] != null) nodes.push(<SymIcon key={key++} kind="exhaust" />);
-    else if (m[7] != null) nodes.push(<RuneIcon key={key++} domain={m[8]} />);
-    else if (m[9] != null) nodes.push(<span key={key++} className="rb-ico rb-generic">{m[10].replace(/_/g, ' ')}</span>);
+    else if (m[5] != null) nodes.push(<Glyph key={key++} name="might" fallback={<SymIcon kind="might" />} />);
+    else if (m[6] != null) nodes.push(<Glyph key={key++} name="exhaust" fallback={<SymIcon kind="exhaust" />} />);
+    else if (m[7] != null) nodes.push(<Glyph key={key++} name={`rune_${m[8].toLowerCase()}`} fallback={<RuneIcon domain={m[8]} />} />);
+    else if (m[9] != null) {
+      const label = <span className="rb-ico rb-generic">{m[10].replace(/_/g, ' ')}</span>;
+      nodes.push(<Glyph key={key++} name={m[10].toLowerCase()} fallback={label} />);
+    }
     else if (m[11] != null) {
       const inner = m[12].trim();
       if (inner === '>' || inner === '→') nodes.push(<span key={key++} className="rb-arrow">→</span>);
