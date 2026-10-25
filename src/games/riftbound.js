@@ -6,7 +6,7 @@ import { splitRiftParagraphs } from '../utils/riftText';
 import { dedupeCards } from '../utils/dedupeCards';
 import { fetchTcgProducts, augmentCards } from '../utils/tcgAugment';
 import { augmentRunes } from '../utils/runeArt';
-import { fetchRiotCards, enrichFromTcg } from './riotGallery';
+import { fetchRiotCards, enrichFromTcg, fixDomainOutliers } from './riotGallery';
 import { SET_LOGOS } from '../utils/setLogos';
 import { toCSV, buildRidMap, matchCSVRows } from '../utils/csvImport';
 import * as rules from './riftboundRules';
@@ -45,7 +45,7 @@ async function loadMainSets({ tcgcsvBase, riotBase }) {
   try {
     const cards = await fetchRiotCards(riotBase, exclude);
     if (!cards.length) throw new Error('no cards');
-    return await enrichFromTcg(cards, tcgcsvBase);
+    return fixDomainOutliers(await enrichFromTcg(cards, tcgcsvBase));
   } catch (e) {
     console.warn('[riot] gallery unavailable, using riftcodex:', e?.message ?? e);
     // The API re-ingests some sets (currently Vendetta), serving each card

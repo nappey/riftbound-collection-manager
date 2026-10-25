@@ -57,7 +57,7 @@ export function isPlaysetEligible(card) {
 // in its own set, a Metal / Overnumbered premium, or a promo reprint in a later
 // set. Strip the variant suffix and every printing of a card shares a name.
 export const VARIANT_SUFFIX =
-  /\s*\((Alternate Art|Overnumbered|Signature|Metal|Starter|Ultimate|Launch Exclusive|GG EZ)\)\s*$/i;
+  /\s*\((Alternate Art|Overnumbered|Signature|Special Art|Metal|Starter|Ultimate|Launch Exclusive|GG EZ)\)\s*$/i;
 
 // Champion names are "Name - Title" in most sets but "Name, Title" in Vendetta
 // ("Ahri, Inquisitive" is a reprint of "Ahri - Inquisitive"). Champions only:

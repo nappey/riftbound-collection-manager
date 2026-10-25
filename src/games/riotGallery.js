@@ -32,7 +32,11 @@ function toRiftcodexShape(raw) {
   if (subtitle) name = `${c.name} - ${subtitle}`;
   else if (type === 'Legend' && tags[0]) name = `${tags[0]} - ${c.name}`;
   const sigVariant = c.id.includes('*');
+  // "rad-sp1-005": Radiance's K/DA Special Art showcases share their base
+  // champion's name — label them so they don't read as duplicates.
+  const specialArt = /^[a-z0-9]+-sp\d+-/.test(c.id);
   if (sigVariant) name += ' (Signature)';
+  else if (specialArt) name += ' (Special Art)';
   else if (alt) name += ' (Alternate Art)';
   else if (over) name += ' (Overnumbered)';
   const rich = c.text?.richText?.body ?? '';
@@ -65,6 +69,7 @@ function toRiftcodexShape(raw) {
       alternate_art: alt,
       overnumbered: over,
       signature: sigVariant || supertype === 'Signature',
+      special_art: specialArt,
     },
     _source: 'riot',
   };
@@ -131,6 +136,41 @@ const TCG_DOMAIN_SETS = new Set(['RAD']);
 function tcgDomains(p) {
   const parts = (ext(p, 'Domain') ?? '').split(';').map((s) => s.trim()).filter(Boolean);
   return parts.length && parts.every((d) => DOMAINS.has(d)) ? parts : null;
+}
+
+// "rad-062a-167" / "rad-062*-167" → "rad-062-167".
+const baseRid = (rid) => rid.replace(/^([a-z0-9]+-[a-z]*\d+)[a-z*]?(?=-)/, '$1');
+
+/**
+ * Main sets are numbered in domain blocks (Fury, Calm, Mind…). A card with one
+ * domain — or none — that differs from both its numbered neighbours, which
+ * agree with each other, is mis-tagged at the source: Radiance's Gravity Field
+ * (#062, Mind) and Demon Shade (#102, Chaos) are wrong in both the gallery and
+ * tcgcsv, and #009 / #041 / #121 have no domain in either. Such a card takes
+ * its neighbours' domain, and so do its alt arts and signature versions.
+ */
+export function fixDomainOutliers(cards) {
+  const byNumber = new Map(); // `${set}|${n}` → base print
+  for (const c of cards) {
+    // Numbered main-set prints only ("rad-062-167"), not tokens/runes ("sfd-t03").
+    if (/^[a-z0-9]+-\d+-\d+$/.test(c.riftbound_id) && !c.metadata.overnumbered) {
+      byNumber.set(`${c.set.set_id}|${c.collector_number}`, c);
+    }
+  }
+  const single = (c) => (c?.classification.domain.length === 1 ? c.classification.domain[0] : null);
+  const fixed = new Map(); // base riftbound_id → domain
+  for (const c of byNumber.values()) {
+    const ds = c.classification.domain;
+    if (ds.length > 1) continue; // dual-domain cards are deliberate
+    const prev = single(byNumber.get(`${c.set.set_id}|${c.collector_number - 1}`));
+    const next = single(byNumber.get(`${c.set.set_id}|${c.collector_number + 1}`));
+    if (prev && prev === next && prev !== ds[0] && DOMAINS.has(prev)) fixed.set(c.riftbound_id, prev);
+  }
+  if (!fixed.size) return cards;
+  return cards.map((c) => {
+    const domain = fixed.get(baseRid(c.riftbound_id));
+    return domain ? { ...c, classification: { ...c.classification, domain: [domain] } } : c;
+  });
 }
 
 /**
